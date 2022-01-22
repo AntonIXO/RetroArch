@@ -16,12 +16,26 @@
 #ifndef CTR_COMMON_H__
 #define CTR_COMMON_H__
 
+#include <3ds.h>
 #include <retro_inline.h>
 
 #define COLOR_ABGR(r, g, b, a) (((unsigned)(a) << 24) | ((b) << 16) | ((g) << 8) | ((r) << 0))
 
-#define CTR_TOP_FRAMEBUFFER_WIDTH   400
-#define CTR_TOP_FRAMEBUFFER_HEIGHT  240
+#define CTR_TOP_FRAMEBUFFER_WIDTH      400
+#define CTR_TOP_FRAMEBUFFER_HEIGHT     240
+#define CTR_BOTTOM_FRAMEBUFFER_WIDTH   320
+#define CTR_BOTTOM_FRAMEBUFFER_HEIGHT  240
+#define CTR_STATE_DATE_SIZE            11
+
+#ifdef USE_CTRULIB_2
+extern u8* gfxTopLeftFramebuffers[2];
+extern u8* gfxTopRightFramebuffers[2];
+extern u8* gfxBottomFramebuffers[2];
+#endif
+
+#ifdef CONSOLE_LOG
+extern PrintConsole* ctrConsole;
+#endif 
 
 extern const u8 ctr_sprite_shbin[];
 extern const u32 ctr_sprite_shbin_size;
@@ -42,11 +56,19 @@ typedef struct
 
 typedef enum
 {
-   CTR_VIDEO_MODE_NORMAL,
-   CTR_VIDEO_MODE_800x240,
-   CTR_VIDEO_MODE_400x240,
-   CTR_VIDEO_MODE_3D
-}ctr_video_mode_enum;
+	CTR_VIDEO_MODE_3D = 0,
+	CTR_VIDEO_MODE_2D,
+	CTR_VIDEO_MODE_2D_400X240,
+	CTR_VIDEO_MODE_2D_800X240,
+	CTR_VIDEO_MODE_LAST
+} ctr_video_mode_enum;
+
+typedef enum
+{
+   CTR_BOTTOM_MENU_NOT_AVAILABLE = 0,
+	CTR_BOTTOM_MENU_DEFAULT,
+   CTR_BOTTOM_MENU_SELECT,
+} ctr_bottom_menu;
 
 typedef struct ctr_video
 {
@@ -57,6 +79,7 @@ typedef struct ctr_video
          void* left;
          void* right;
       }top;
+      void* bottom;
    }drawbuffers;
    void* depthbuffer;
 
@@ -95,14 +118,21 @@ typedef struct ctr_video
    unsigned rotation;
    bool keep_aspect;
    bool should_resize;
-   bool lcd_buttom_on;
    bool msg_rendering_enabled;
+   bool supports_parallax_disable;
+   bool enable_3d;
 
-   void* empty_framebuffer;
+#ifdef HAVE_OVERLAY
+   struct ctr_overlay_data *overlay;
+   unsigned overlays;
+   bool overlay_enabled;
+   bool overlay_full_screen;
+#endif
 
    aptHookCookie lcd_aptHook;
    ctr_video_mode_enum video_mode;
    int current_buffer_top;
+   int current_buffer_bottom;
 
    bool p3d_event_pending;
    bool ppf_event_pending;
@@ -115,6 +145,20 @@ typedef struct ctr_video
       int size;
    }vertex_cache;
 
+   bool init_bottom_menu;
+   bool refresh_bottom_menu;
+   bool render_font_bottom;
+   bool render_state_from_png_file;
+   bool state_data_exist;
+   char state_date[CTR_STATE_DATE_SIZE];
+   int state_slot;
+   bool bottom_check_idle;
+   bool bottom_is_idle;
+   bool bottom_is_fading;
+   u64  idle_timestamp;
+   ctr_bottom_menu bottom_menu;
+   ctr_bottom_menu prev_bottom_menu;
+   struct ctr_bottom_texture_data *bottom_textures;
 } ctr_video_t;
 
 typedef struct ctr_texture
@@ -128,6 +172,23 @@ typedef struct ctr_texture
    void* data;
 } ctr_texture_t;
 
+#ifdef HAVE_OVERLAY
+struct ctr_overlay_data
+{
+   ctr_texture_t texture;
+   ctr_vertex_t* frame_coords;
+   ctr_scale_vector_t scale_vector;
+   float alpha_mod;
+};
+#endif
+
+struct ctr_bottom_texture_data
+{
+   uintptr_t texture;
+   ctr_vertex_t* frame_coords;
+   ctr_scale_vector_t scale_vector;
+};
+
 static INLINE void ctr_set_scale_vector(ctr_scale_vector_t* vec,
       int viewport_width, int viewport_height,
       int texture_width, int texture_height)
@@ -137,6 +198,5 @@ static INLINE void ctr_set_scale_vector(ctr_scale_vector_t* vec,
    vec->u =  1.0 / texture_width;
    vec->v = -1.0 / texture_height;
 }
-
 
 #endif // CTR_COMMON_H__

@@ -15,7 +15,6 @@
 
 #define CINTERFACE
 
-#include <stdio.h>
 #include <string.h>
 
 #ifdef HAVE_CONFIG_H
@@ -25,9 +24,10 @@
 #include "d3dcompiler_common.h"
 #include "../../verbosity.h"
 
-#ifdef HAVE_DYNAMIC
+#if defined(HAVE_DYNAMIC) && !defined(__WINRT__)
 #include <dynamic/dylib.h>
 
+/* TODO/FIXME - static globals */
 static dylib_t     d3dcompiler_dll;
 static const char* d3dcompiler_dll_list[] = {
    "D3DCompiler_47.dll", "D3DCompiler_46.dll", "D3DCompiler_45.dll", "D3DCompiler_44.dll",
@@ -132,16 +132,16 @@ bool d3d_compile(const char* src, size_t size, LPCSTR src_name, LPCSTR entrypoin
    compileflags        |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #endif
 
-   
    if (!size)
       size = strlen(src);
-   
+
    if (FAILED(D3DCompile(
              src, size, src_name, NULL, NULL, entrypoint, target, compileflags, 0, out, &error_msg)))
    {
       if (error_msg)
       {
-         RARCH_ERR("D3DCompile failed :\n%s\n", (const char*)D3DGetBufferPointer(error_msg));
+         const char* msg = (const char*)D3DGetBufferPointer(error_msg);
+         RARCH_ERR("D3DCompile failed :\n%s\n", msg);						/* Place a breakpoint here, if you want, to see shader compilation issues */
          Release(error_msg);
       }
       return false;

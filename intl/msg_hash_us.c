@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2011-2017 - Daniel De Matteis
- *  Copyright (C) 2016-2017 - Brad Parker
+ *  Copyright (C) 2016-2019 - Brad Parker
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -26,8 +26,9 @@
 
 #ifdef RARCH_INTERNAL
 #include "../configuration.h"
+#include "../config.def.h"
 
-int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
+int msg_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
 {
     settings_t *settings = config_get_ptr();
 
@@ -104,6 +105,22 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
              snprintf(s, len,
                    "Toggles onscreen keyboard.");
              break;
+          case RARCH_FPS_TOGGLE:
+             snprintf(s, len,
+                   "Toggles frames per second counter.");
+             break;
+          case RARCH_STATISTICS_TOGGLE:
+             snprintf(s, len,
+                   "Toggles display of technical statistics.");
+             break;
+          case RARCH_SEND_DEBUG_INFO:
+             snprintf(s, len,
+                   "Sends diagnostic info about your device and RetroArch configuration to our servers for analysis.");
+             break;
+          case RARCH_NETPLAY_HOST_TOGGLE:
+             snprintf(s, len,
+                   "Toggles netplay hosting on/off.");
+             break;
           case RARCH_NETPLAY_GAME_WATCH:
              snprintf(s, len,
                    "Netplay toggle play/spectate mode.");
@@ -136,7 +153,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
              snprintf(s, len,
                    "Toggles eject for disks. \n"
                    " \n"
-                   "Used for multiple-disk content. ");
+                   "Used for multiple-disk content.");
              break;
           case RARCH_DISK_NEXT:
           case RARCH_DISK_PREV:
@@ -159,7 +176,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                    "Toggles game focus.\n"
                    " \n"
                    "When a game has focus, RetroArch will both disable \n"
-                   "hotkeys and keep/warp the mouse pointer inside the window.");
+                   "hotkeys and keep/wrap the mouse pointer inside the window.");
              break;
           case RARCH_MENU_TOGGLE:
              snprintf(s, len, "Toggles menu.");
@@ -171,6 +188,10 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
           case RARCH_FULLSCREEN_TOGGLE_KEY:
              snprintf(s, len,
                    "Toggles fullscreen.");
+             break;
+          case RARCH_CLOSE_CONTENT_KEY:
+             snprintf(s, len,
+                   "Closes content.");
              break;
           case RARCH_QUIT_KEY:
              snprintf(s, len,
@@ -205,9 +226,13 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                    " \n"
                    "Rewinding must be enabled.");
              break;
-          case RARCH_MOVIE_RECORD_TOGGLE:
+          case RARCH_BSV_RECORD_TOGGLE:
              snprintf(s, len,
                    "Toggle between recording and not.");
+             break;
+          case RARCH_RUNAHEAD_TOGGLE:
+             snprintf(s, len,
+                   "Toggles Run-Ahead mode on/off.");
              break;
           default:
              if (string_is_empty(s))
@@ -271,6 +296,18 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
         case MENU_ENUM_LABEL_SORT_SAVEFILES_ENABLE:
             snprintf(s, len, "Sort save files in folders \n"
                     "named after the libretro core used.");
+            break;
+        case MENU_ENUM_LABEL_SORT_SAVESTATES_BY_CONTENT_ENABLE:
+            snprintf(s, len, "Sort save states in folders named \n"
+                   "after the folder in which the content lives.");
+            break;
+        case MENU_ENUM_LABEL_SORT_SAVEFILES_BY_CONTENT_ENABLE:
+            snprintf(s, len, "Sort save files in folders named \n"
+                  "after the folder in which the content lives.");
+            break;
+        case MENU_ENUM_LABEL_SORT_SCREENSHOTS_BY_CONTENT_ENABLE:
+            snprintf(s, len, "Sort screenshots in folders named \n"
+                  "after the folder in which the content lives.");
             break;
         case MENU_ENUM_LABEL_RESUME_CONTENT:
             snprintf(s, len, "Exits from the menu and returns back \n"
@@ -358,6 +395,41 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "Save all playlist files to this \n"
                              "directory.");
             break;
+        case MENU_ENUM_LABEL_CONTENT_FAVORITES_DIRECTORY:
+            snprintf(s, len,
+                     "Favorites Playlist Directory. \n"
+                             " \n"
+                             "Save the favorites playlist to this \n"
+                             "directory.");
+            break;
+        case MENU_ENUM_LABEL_CONTENT_HISTORY_DIRECTORY:
+            snprintf(s, len,
+                     "History Playlist Directory. \n"
+                             " \n"
+                             "Save the history playlist to this \n"
+                             "directory.");
+            break;
+        case MENU_ENUM_LABEL_CONTENT_IMAGE_HISTORY_DIRECTORY:
+            snprintf(s, len,
+                     "Images Playlist Directory. \n"
+                             " \n"
+                             "Save the images playlist to this \n"
+                             "directory.");
+            break;
+        case MENU_ENUM_LABEL_CONTENT_MUSIC_HISTORY_DIRECTORY:
+            snprintf(s, len,
+                     "Music Playlist Directory. \n"
+                             " \n"
+                             "Save the music playlist to this \n"
+                             "directory.");
+            break;
+        case MENU_ENUM_LABEL_CONTENT_VIDEO_HISTORY_DIRECTORY:
+            snprintf(s, len,
+                     "Videos Playlist Directory. \n"
+                             " \n"
+                             "Save the videos playlist to this \n"
+                             "directory.");
+            break;
         case MENU_ENUM_LABEL_DUMMY_ON_CORE_SHUTDOWN:
             snprintf(s, len,
                      "Some cores might have \n"
@@ -380,12 +452,22 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              " \n"
                              "If this option is disabled, \n"
                              "it will try to load even if such \n"
-                             "firmware is missing. \n");
+                             "firmware is missing.");
             break;
         case MENU_ENUM_LABEL_PARENT_DIRECTORY:
             snprintf(s, len,
                      "Go back to the parent directory.");
             break;
+        case MENU_ENUM_LABEL_FILE_BROWSER_OPEN_UWP_PERMISSIONS:
+            snprintf(s, len,
+                     "Open Windows permission settings to enable \n"
+                     "the broadFileSystemAccess capability.");
+            break;
+        case MENU_ENUM_LABEL_FILE_BROWSER_OPEN_PICKER:
+           snprintf(s, len,
+                     "Open the system file picker to access \n"
+                     "additional directories.");
+           break;
         case MENU_ENUM_LABEL_FILE_BROWSER_SHADER_PRESET:
             snprintf(s, len,
                      "Shader preset file.");
@@ -496,8 +578,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "Setting it to 'Early' or 'Late' can result \n"
                              "in less latency, \n"
                              "depending on your configuration.\n\n"
-                             "Will be ignored when using netplay."
-            );
+                             "Will be ignored when using netplay.");
             break;
         case MENU_ENUM_LABEL_INPUT_DESCRIPTOR_HIDE_UNBOUND:
             snprintf(s, len,
@@ -567,6 +648,11 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                      "Enables displaying the current frames \n"
                              "per second.");
             break;
+        case MENU_ENUM_LABEL_MEMORY_SHOW:
+            snprintf(s, len,
+                     "Includes displaying the current memory \n"
+                             "usage/total with FPS/Frames.");
+            break;
         case MENU_ENUM_LABEL_VIDEO_FONT_ENABLE:
             snprintf(s, len,
                      "Show and/or hide onscreen messages.");
@@ -604,6 +690,19 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
             snprintf(s, len,
                      "Overlay opacity.");
             break;
+        case MENU_ENUM_LABEL_VIDEO_LAYOUT_ENABLE:
+            snprintf(s, len,
+                     "Enable or disable the current video layout.");
+            break;
+        case MENU_ENUM_LABEL_VIDEO_LAYOUT_PATH:
+            snprintf(s, len,
+                     "Path to video layout.");
+            break;
+        case MENU_ENUM_LABEL_VIDEO_LAYOUT_SELECTED_VIEW:
+            snprintf(s, len,
+                     "Layouts can contain multiple views. \n"
+                     "Select a view.");
+            break;
         case MENU_ENUM_LABEL_INPUT_BIND_TIMEOUT:
             snprintf(s, len,
                      "Input bind timer timeout (in seconds). \n"
@@ -615,10 +714,6 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                "Input bind hold time (in seconds). \n"
                "Amount of seconds to hold an input to bind it.");
             break;
-        case MENU_ENUM_LABEL_OVERLAY_SCALE:
-            snprintf(s, len,
-                     "Overlay scale.");
-            break;
         case MENU_ENUM_LABEL_AUDIO_OUTPUT_RATE:
             snprintf(s, len,
                      "Audio output samplerate.");
@@ -628,8 +723,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                      "Set to true if hardware-rendered cores \n"
                              "should get their private context. \n"
                              "Avoids having to assume hardware state changes \n"
-                             "inbetween frames."
-            );
+                             "inbetween frames.");
             break;
         case MENU_ENUM_LABEL_CORE_LIST:
             snprintf(s, len,
@@ -650,75 +744,72 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                      "You can use the following controls below \n"
                              "on either your gamepad or keyboard in order\n"
                              "to control the menu: \n"
-                             " \n"
-            );
+                             " \n");
             break;
         case MENU_ENUM_LABEL_WELCOME_TO_RETROARCH:
             snprintf(s, len,
-                     "Welcome to RetroArch\n"
-            );
+                     "Welcome to RetroArch\n");
             break;
-        case MENU_ENUM_LABEL_VALUE_HELP_AUDIO_VIDEO_TROUBLESHOOTING_DESC: {
-            /* Work around C89 limitations */
-            char u[501];
-            const char *t =
-                    "RetroArch relies on an unique form of\n"
-                            "audio/video synchronization where it needs to be\n"
-                            "calibrated against the refresh rate of your\n"
-                            "display for best performance results.\n"
-                            " \n"
-                            "If you experience any audio crackling or video\n"
-                            "tearing, usually it means that you need to\n"
-                            "calibrate the settings. Some choices below:\n"
-                            " \n";
-            snprintf(u, sizeof(u), /* can't inline this due to the printf arguments */
-                     "a) Go to '%s' -> '%s', and enable\n"
-                             "'Threaded Video'. Refresh rate will not matter\n"
-                             "in this mode, framerate will be higher,\n"
-                             "but video might be less smooth.\n"
-                             "b) Go to '%s' -> '%s', and look at\n"
-                             "'%s'. Let it run for\n"
-                             "2048 frames, then press 'OK'.",
-                     msg_hash_to_str(MENU_ENUM_LABEL_VALUE_SETTINGS),
-                     msg_hash_to_str(MENU_ENUM_LABEL_VALUE_VIDEO_SETTINGS),
-                     msg_hash_to_str(MENU_ENUM_LABEL_VALUE_SETTINGS),
-                     msg_hash_to_str(MENU_ENUM_LABEL_VALUE_VIDEO_SETTINGS),
-                     msg_hash_to_str(MENU_ENUM_LABEL_VALUE_VIDEO_REFRESH_RATE_AUTO));
-            strlcpy(s, t, len);
-            strlcat(s, u, len);
-        }
+        case MENU_ENUM_LABEL_VALUE_HELP_AUDIO_VIDEO_TROUBLESHOOTING_DESC:
+            {
+                /* Work around C89 limitations */
+                char u[501];
+                const char *t =
+                        "RetroArch relies on an unique form of\n"
+                                "audio/video synchronization where it needs to be\n"
+                                "calibrated against the refresh rate of your\n"
+                                "display for best performance results.\n"
+                                " \n"
+                                "If you experience any audio crackling or video\n"
+                                "tearing, usually it means that you need to\n"
+                                "calibrate the settings. Some choices below:\n"
+                                " \n";
+                snprintf(u, sizeof(u), /* can't inline this due to the printf arguments */
+                         "a) Go to '%s' -> '%s', and enable\n"
+                                 "'Threaded Video'. Refresh rate will not matter\n"
+                                 "in this mode, framerate will be higher,\n"
+                                 "but video might be less smooth.\n"
+                                 "b) Go to '%s' -> '%s', and look at\n"
+                                 "'%s'. Let it run for\n"
+                                 "2048 frames, then press 'OK'.",
+                         msg_hash_to_str(MENU_ENUM_LABEL_VALUE_SETTINGS),
+                         msg_hash_to_str(MENU_ENUM_LABEL_VALUE_VIDEO_SETTINGS),
+                         msg_hash_to_str(MENU_ENUM_LABEL_VALUE_SETTINGS),
+                         msg_hash_to_str(MENU_ENUM_LABEL_VALUE_VIDEO_SETTINGS),
+                         msg_hash_to_str(MENU_ENUM_LABEL_VALUE_VIDEO_REFRESH_RATE_AUTO));
+                strlcpy(s, t, len);
+                strlcat(s, u, len);
+            }
             break;
         case MENU_ENUM_LABEL_VALUE_HELP_SCANNING_CONTENT_DESC:
             snprintf(s, len,
                      "To scan for content, go to '%s' and\n"
                              "select either '%s' or %s'.\n"
-                             " \n"
+                             "\n"
                              "Files will be compared to database entries.\n"
                              "If there is a match, it will add an entry\n"
-                             "to a collection.\n"
-                             " \n"
+                             "to a playlist.\n"
+                             "\n"
                              "You can then easily access this content by\n"
                              "going to '%s' ->\n"
                              "'%s'\n"
                              "instead of having to go through the\n"
-                             "filebrowser everytime.\n"
-                             " \n"
+                             "file browser every time.\n"
+                             "\n"
                              "NOTE: Content for some cores might still not be\n"
                              "scannable.",
                      msg_hash_to_str(MENU_ENUM_LABEL_VALUE_ADD_CONTENT_LIST),
                      msg_hash_to_str(MENU_ENUM_LABEL_VALUE_SCAN_DIRECTORY),
                      msg_hash_to_str(MENU_ENUM_LABEL_VALUE_SCAN_FILE),
                      msg_hash_to_str(MENU_ENUM_LABEL_VALUE_LOAD_CONTENT_LIST),
-                     msg_hash_to_str(MENU_ENUM_LABEL_VALUE_CONTENT_COLLECTION_LIST)
-            );
+                     msg_hash_to_str(MENU_ENUM_LABEL_VALUE_PLAYLISTS_TAB));
             break;
         case MENU_ENUM_LABEL_VALUE_EXTRACTING_PLEASE_WAIT:
             snprintf(s, len,
                      "Welcome to RetroArch\n"
                              "\n"
                              "Extracting assets, please wait.\n"
-                             "This might take a while...\n"
-            );
+                             "This might take a while...\n");
             break;
         case MENU_ENUM_LABEL_INPUT_DRIVER:
             {
@@ -738,8 +829,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                            " \n"
                            "By default in most distros, /dev/input nodes \n"
                            "are root-only (mode 600). You can set up a udev \n"
-                           "rule which makes these accessible to non-root."
-                           );
+                           "rule which makes these accessible to non-root.");
                else if (string_is_equal(lbl,
                         msg_hash_to_str(MENU_ENUM_LABEL_INPUT_DRIVER_LINUXRAW)))
                      snprintf(s, len,
@@ -775,8 +865,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "The browser will filter out \n"
                              "extensions for the last core set \n"
                              "in 'Load Core', and use that core \n"
-                             "when content is loaded."
-            );
+                             "when content is loaded.");
             break;
         case MENU_ENUM_LABEL_LOAD_CONTENT_HISTORY:
             snprintf(s, len,
@@ -789,95 +878,97 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "directory as the RetroArch config file. If \n"
                              "no config file was loaded in startup, history \n"
                              "will not be saved or loaded, and will not exist \n"
-                             "in the main menu."
-            );
+                             "in the main menu.");
             break;
         case MENU_ENUM_LABEL_VIDEO_DRIVER:
-            snprintf(s, len,
+            {
+               const char *video_driver = settings->arrays.video_driver;
+
+               snprintf(s, len,
                      "Current Video driver.");
 
-            if (string_is_equal(settings->arrays.video_driver, "gl"))
-            {
-                snprintf(s, len,
-                         "OpenGL Video driver. \n"
-                                 " \n"
-                                 "This driver allows libretro GL cores to  \n"
-                                 "be used in addition to software-rendered \n"
-                                 "core implementations.\n"
-                                 " \n"
-                                 "Performance for software-rendered and \n"
-                                 "libretro GL core implementations is \n"
-                                 "dependent on your graphics card's \n"
-                                 "underlying GL driver).");
-            }
-            else if (string_is_equal(settings->arrays.video_driver, "sdl2"))
-            {
-                snprintf(s, len,
-                         "SDL 2 Video driver.\n"
-                                 " \n"
-                                 "This is an SDL 2 software-rendered video \n"
-                                 "driver.\n"
-                                 " \n"
-                                 "Performance for software-rendered libretro \n"
-                                 "core implementations is dependent \n"
-                                 "on your platform SDL implementation.");
-            }
-            else if (string_is_equal(settings->arrays.video_driver, "sdl1"))
-            {
-                snprintf(s, len,
-                         "SDL Video driver.\n"
-                                 " \n"
-                                 "This is an SDL 1.2 software-rendered video \n"
-                                 "driver.\n"
-                                 " \n"
-                                 "Performance is considered to be suboptimal. \n"
-                                 "Consider using it only as a last resort.");
-            }
-            else if (string_is_equal(settings->arrays.video_driver, "d3d"))
-            {
-                snprintf(s, len,
-                         "Direct3D Video driver. \n"
-                                 " \n"
-                                 "Performance for software-rendered cores \n"
-                                 "is dependent on your graphic card's \n"
-                                 "underlying D3D driver).");
-            }
-            else if (string_is_equal(settings->arrays.video_driver, "exynos"))
-            {
-                snprintf(s, len,
-                         "Exynos-G2D Video Driver. \n"
-                                 " \n"
-                                 "This is a low-level Exynos video driver. \n"
-                                 "Uses the G2D block in Samsung Exynos SoC \n"
-                                 "for blit operations. \n"
-                                 " \n"
-                                 "Performance for software rendered cores \n"
-                                 "should be optimal.");
-            }
-            else if (string_is_equal(settings->arrays.video_driver, "drm"))
-            {
-                snprintf(s, len,
-                         "Plain DRM Video Driver. \n"
-                                 " \n"
-                                 "This is a low-level video driver using. \n"
-                                 "libdrm for hardware scaling using \n"
-                                 "GPU overlays.");
-            }
-            else if (string_is_equal(settings->arrays.video_driver, "sunxi"))
-            {
-                snprintf(s, len,
-                         "Sunxi-G2D Video Driver. \n"
-                                 " \n"
-                                 "This is a low-level Sunxi video driver. \n"
-                                 "Uses the G2D block in Allwinner SoCs.");
+               if (string_is_equal(video_driver, "gl"))
+               {
+                  snprintf(s, len,
+                        "OpenGL Video driver. \n"
+                        " \n"
+                        "This driver allows libretro GL cores to  \n"
+                        "be used in addition to software-rendered \n"
+                        "core implementations.\n"
+                        " \n"
+                        "Performance for software-rendered and \n"
+                        "libretro GL core implementations is \n"
+                        "dependent on your graphics card's \n"
+                        "underlying GL driver).");
+               }
+               else if (string_is_equal(video_driver, "sdl2"))
+               {
+                  snprintf(s, len,
+                        "SDL 2 Video driver.\n"
+                        " \n"
+                        "This is an SDL 2 software-rendered video \n"
+                        "driver.\n"
+                        " \n"
+                        "Performance for software-rendered libretro \n"
+                        "core implementations is dependent \n"
+                        "on your platform SDL implementation.");
+               }
+               else if (string_is_equal(video_driver, "sdl1"))
+               {
+                  snprintf(s, len,
+                        "SDL Video driver.\n"
+                        " \n"
+                        "This is an SDL 1.2 software-rendered video \n"
+                        "driver.\n"
+                        " \n"
+                        "Performance is considered to be suboptimal. \n"
+                        "Consider using it only as a last resort.");
+               }
+               else if (string_is_equal(video_driver, "d3d"))
+               {
+                  snprintf(s, len,
+                        "Direct3D Video driver. \n"
+                        " \n"
+                        "Performance for software-rendered cores \n"
+                        "is dependent on your graphic card's \n"
+                        "underlying D3D driver).");
+               }
+               else if (string_is_equal(video_driver, "exynos"))
+               {
+                  snprintf(s, len,
+                        "Exynos-G2D Video Driver. \n"
+                        " \n"
+                        "This is a low-level Exynos video driver. \n"
+                        "Uses the G2D block in Samsung Exynos SoC \n"
+                        "for blit operations. \n"
+                        " \n"
+                        "Performance for software rendered cores \n"
+                        "should be optimal.");
+               }
+               else if (string_is_equal(video_driver, "drm"))
+               {
+                  snprintf(s, len,
+                        "Plain DRM Video Driver. \n"
+                        " \n"
+                        "This is a low-level video driver using. \n"
+                        "libdrm for hardware scaling using \n"
+                        "GPU overlays.");
+               }
+               else if (string_is_equal(video_driver, "sunxi"))
+               {
+                  snprintf(s, len,
+                        "Sunxi-G2D Video Driver. \n"
+                        " \n"
+                        "This is a low-level Sunxi video driver. \n"
+                        "Uses the G2D block in Allwinner SoCs.");
+               }
             }
             break;
         case MENU_ENUM_LABEL_AUDIO_DSP_PLUGIN:
             snprintf(s, len,
                      "Audio DSP plugin.\n"
                              " Processes audio before it's sent to \n"
-                             "the driver."
-            );
+                             "the driver.");
             break;
         case MENU_ENUM_LABEL_AUDIO_RESAMPLER_DRIVER:
             {
@@ -895,13 +986,13 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                   strlcpy(s, msg_hash_to_str(MENU_ENUM_LABEL_VALUE_NO_INFORMATION_AVAILABLE), len);
             }
             break;
-			
-		case MENU_ENUM_LABEL_CRT_SWITCH_RESOLUTION: snprintf(s, len, "SET CRT"); 
+
+		case MENU_ENUM_LABEL_CRT_SWITCH_RESOLUTION: snprintf(s, len, "SET CRT");
 			break;
-			
-		case MENU_ENUM_LABEL_CRT_SWITCH_RESOLUTION_SUPER: snprintf(s, len, "SET CRT SUPER"); 
+
+		case MENU_ENUM_LABEL_CRT_SWITCH_RESOLUTION_SUPER: snprintf(s, len, "SET CRT SUPER");
 			break;
-			
+
         case MENU_ENUM_LABEL_VIDEO_SHADER_PRESET:
             snprintf(s, len,
                      "Load Shader Preset. \n"
@@ -912,8 +1003,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "If the CGP uses scaling methods which are not \n"
                              "simple, (i.e. source scaling, same scaling \n"
                              "factor for X/Y), the scaling factor displayed \n"
-                             "in the menu might not be correct."
-            );
+                             "in the menu might not be correct.");
             break;
         case MENU_ENUM_LABEL_VIDEO_SHADER_SCALE_PASS:
             snprintf(s, len,
@@ -931,8 +1021,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "If 'Don't Care' is set, either 1x \n"
                              "scale or stretch to fullscreen will \n"
                              "be used depending if it's not the last \n"
-                             "pass or not."
-            );
+                             "pass or not.");
             break;
         case MENU_ENUM_LABEL_VIDEO_SHADER_NUM_PASSES:
             snprintf(s, len,
@@ -960,8 +1049,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
             snprintf(s, len,
                      "Shader Preset Parameters. \n"
                              " \n"
-                             "Modifies shader preset currently in menu."
-            );
+                             "Modifies shader preset currently in menu.");
             break;
         case MENU_ENUM_LABEL_VIDEO_SHADER_PASS:
             snprintf(s, len,
@@ -972,8 +1060,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              " \n"
                              "Set Shader Directory to set where \n"
                              "the browser starts to look for \n"
-                             "shaders."
-            );
+                             "shaders.");
             break;
         case MENU_ENUM_LABEL_CONFIGURATION_SETTINGS:
             snprintf(s, len,
@@ -1014,8 +1101,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                      "Hardware filter for this pass. \n"
                              " \n"
                              "If 'Don't Care' is set, 'Default \n"
-                             "Filter' will be used."
-            );
+                             "Filter' will be used.");
             break;
         case MENU_ENUM_LABEL_AUTOSAVE_INTERVAL:
             snprintf(s, len,
@@ -1033,8 +1119,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                      "Input Device Type. \n"
                              " \n"
                              "Picks which device type to use. This is \n"
-                             "relevant for the libretro core itself."
-            );
+                             "relevant for the libretro core itself.");
             break;
         case MENU_ENUM_LABEL_LIBRETRO_LOG_LEVEL:
             snprintf(s, len,
@@ -1051,8 +1136,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              " DEBUG = 0\n"
                              " INFO  = 1\n"
                              " WARN  = 2\n"
-                             " ERROR = 3"
-            );
+                             " ERROR = 3");
             break;
         case MENU_ENUM_LABEL_STATE_SLOT_INCREASE:
         case MENU_ENUM_LABEL_STATE_SLOT_DECREASE:
@@ -1079,8 +1163,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "settings are saved to a temporary file (either \n"
                              "menu.cgp or menu.glslp) and loaded. The file \n"
                              "persists after RetroArch exits. The file is \n"
-                             "saved to Shader Directory."
-            );
+                             "saved to Shader Directory.");
             break;
         case MENU_ENUM_LABEL_SHADER_WATCH_FOR_CHANGES:
             snprintf(s, len,
@@ -1088,8 +1171,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                      " \n"
                      "After saving changes to a shader on disk, \n"
                      "it will automatically be recompiled \n"
-                     "and applied to the running content."
-            );
+                     "and applied to the running content.");
             break;
         case MENU_ENUM_LABEL_MENU_TOGGLE:
             snprintf(s, len,
@@ -1109,7 +1191,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                      "Toggles game focus.\n"
                              " \n"
                              "When a game has focus, RetroArch will both disable \n"
-                             "hotkeys and keep/warp the mouse pointer inside the window.");
+                             "hotkeys and keep/wrap the mouse pointer inside the window.");
             break;
         case MENU_ENUM_LABEL_DISK_NEXT:
             snprintf(s, len,
@@ -1185,6 +1267,10 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
             snprintf(s, len,
                      "Apply cheat immediately after toggling.");
             break;
+        case MENU_ENUM_LABEL_CHEAT_APPLY_AFTER_LOAD:
+            snprintf(s, len,
+                     "Auto-apply cheats when game loads.");
+            break;
         case MENU_ENUM_LABEL_LIBRETRO_DIR_PATH:
             snprintf(s, len,
                      "Core Directory. \n"
@@ -1235,9 +1321,39 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "Resolution of 0 uses the \n"
                              "resolution of the environment.\n");
             break;
+        case MENU_ENUM_LABEL_VIDEO_HDR_ENABLE:
+            snprintf(s, len,
+                     "Enable HDR.\n"
+                             " \n"
+                             "If supported this enables hdr \n");
+            break;
+        case MENU_ENUM_LABEL_VIDEO_HDR_MAX_NITS:
+            snprintf(s, len,
+                     "Peak Luminance\n"
+                             " \n"
+                             "Set the peak luminance (in cd/m2) your display can reproduce - see RTings for your models peak luminance\n");
+            break;
+        case MENU_ENUM_LABEL_VIDEO_HDR_PAPER_WHITE_NITS:
+            snprintf(s, len,
+                     "Paper White Luminance\n"
+                             " \n"
+                             "Set the luminance at which paper white should be ie readable text or luminance at the top of the SDR range\n");
+            break;
+        case MENU_ENUM_LABEL_VIDEO_HDR_CONTRAST:
+            snprintf(s, len,
+                     "Contrast\n"
+                             " \n"
+                             "The constrast setting for HDR\n");
+            break;
+        case MENU_ENUM_LABEL_VIDEO_HDR_EXPAND_GAMUT:
+            snprintf(s, len,
+                     "Expand Gamut\n"
+                             " \n"
+                             "Once converted to linear space should we use an expanded colour gamut to get to HDR10\n");
+            break;
         case MENU_ENUM_LABEL_FASTFORWARD_RATIO:
             snprintf(s, len,
-                     "Fastforward ratio."
+                     "Fastforward ratio.\n"
                              " \n"
                              "The maximum rate at which content will\n"
                              "be run when using fast forward.\n"
@@ -1249,6 +1365,15 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "the maximum rate will not be exceeded.\n"
                              "Do not rely on this cap to be perfectly \n"
                              "accurate.");
+            break;
+        case MENU_ENUM_LABEL_VRR_RUNLOOP_ENABLE:
+            snprintf(s, len,
+                     "Sync to Exact Content Framerate.\n"
+                             " \n"
+                             "This option is the equivalent of forcing x1 speed\n"
+                             "while still allowing fast forward.\n"
+                             "No deviation from the core requested refresh rate,\n"
+                             "no sound Dynamic Rate Control.");
             break;
         case MENU_ENUM_LABEL_VIDEO_MONITOR_INDEX:
             snprintf(s, len,
@@ -1275,8 +1400,13 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "The base size depends on system-reported \n"
                              "geometry and aspect ratio.\n"
                              " \n"
-                             "If Force Aspect is not set, X/Y will be \n"
+                             "If 'Force Aspect Ratio' is not set, X/Y will be \n"
                              "integer scaled independently.");
+            break;
+        case MENU_ENUM_LABEL_VIDEO_SCALE_INTEGER_OVERSCALE:
+            snprintf(s, len,
+                     "Force integer scaling to round up \n"
+                             " to the next larger integer instead of rounding down.");
             break;
         case MENU_ENUM_LABEL_AUDIO_VOLUME:
             snprintf(s, len,
@@ -1418,7 +1548,25 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "Can reduce latency at the cost of\n"
                              "higher risk of stuttering.\n"
                              " \n"
-                             "Maximum is 15.");
+                             "Maximum is %d.", MAXIMUM_FRAME_DELAY);
+            break;
+        case MENU_ENUM_LABEL_VIDEO_FRAME_DELAY_AUTO:
+            snprintf(s, len,
+                     "Temporarily decreases effective 'Frame Delay'\n"
+                             "until target refresh rate is stable.\n"
+                             " \n"
+                             "Measuring starts from half frame time when\n"
+                             "'Frame Delay' is 0.\n"
+                             " \n"
+                             "E.g. 8 for NTSC and 10 for PAL.");
+            break;
+        case MENU_ENUM_LABEL_VIDEO_SHADER_DELAY:
+            snprintf(s, len,
+                     "Sets by how many milliseconds auto-loading shaders\n"
+                             "are delayed.\n"
+                             "\n"
+                             "Can work around graphical glitches due to using\n"
+                             "'screen grabbing' software like streaming software.");
             break;
         case MENU_ENUM_LABEL_VIDEO_HARD_SYNC_FRAMES:
             snprintf(s, len,
@@ -1478,8 +1626,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
             snprintf(s, len,
                      "Screenshot Directory. \n"
                              " \n"
-                             "Directory to dump screenshots to."
-            );
+                             "Directory to dump screenshots to.");
             break;
         case MENU_ENUM_LABEL_VIDEO_SWAP_INTERVAL:
             snprintf(s, len,
@@ -1532,9 +1679,9 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "When slowmotion, content will slow\n"
                              "down by factor.");
             break;
-        case MENU_ENUM_LABEL_INPUT_AXIS_THRESHOLD:
+        case MENU_ENUM_LABEL_INPUT_BUTTON_AXIS_THRESHOLD:
             snprintf(s, len,
-                     "Defines axis threshold.\n"
+                     "Defines the axis threshold.\n"
                              " \n"
                              "How far an axis must be tilted to result\n"
                              "in a button press.\n"
@@ -1547,8 +1694,19 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "Describes the period of which turbo-enabled\n"
                              "buttons toggle.\n"
                              " \n"
-                             "Numbers are described in frames."
-            );
+                             "Numbers are described in frames.");
+            break;
+        case MENU_ENUM_LABEL_INPUT_TURBO_MODE:
+            snprintf(s, len,
+                  "Turbo Mode.\n"
+                  " \n"
+                  "Selects the general behavior of turbo mode.");
+            break;
+        case MENU_ENUM_LABEL_INPUT_TURBO_DEFAULT_BUTTON:
+            snprintf(s, len,
+                  "Turbo Default Button.\n"
+                  " \n"
+                  "Default active button for Turbo Mode 'Single Button'.\n");
             break;
         case MENU_ENUM_LABEL_INPUT_DUTY_CYCLE:
             snprintf(s, len,
@@ -1557,8 +1715,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "Describes how long the period of a turbo-enabled\n"
                              "should be.\n"
                              " \n"
-                             "Numbers are described in frames."
-            );
+                             "Numbers are described in frames.");
             break;
         case MENU_ENUM_LABEL_INPUT_TOUCH_ENABLE:
             snprintf(s, len, "Enable touch support.");
@@ -1633,16 +1790,16 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                      "Whether to disallow connections not in slave mode. \n"
                              " \n"
                              "Not recommended except for very fast networks \n"
-                             "with very weak machines. \n");
+                             "with very weak machines.");
             break;
         case MENU_ENUM_LABEL_NETPLAY_STATELESS_MODE:
             snprintf(s, len,
-                     "Whether to run netplay in a mode not requiring\n"
+                     "Whether to run netplay in a mode not requiring"
                              "save states. \n"
                              " \n"
-                             "If set to true, a very fast network is required,\n"
-                             "but no rewinding is performed, so there will be\n"
-                             "no netplay jitter.\n");
+                             "If set to true, a very fast network is required, \n"
+                             "but no rewinding is performed, so there will be \n"
+                             "no netplay jitter. \n");
             break;
         case MENU_ENUM_LABEL_NETPLAY_CHECK_FRAMES:
             snprintf(s, len,
@@ -1721,10 +1878,23 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                      "Smoothens picture with bilinear filtering. \n"
                              "Should be disabled if using shaders.");
             break;
+      case MENU_ENUM_LABEL_VIDEO_CTX_SCALING:
+         snprintf(s, len,
+#ifdef HAVE_ODROIDGO2
+               "RGA scaling and bicubic filtering. May break widgets."
+#else
+               "Hardware context scaling (if available)."
+#endif
+         );
+         break;
         case MENU_ENUM_LABEL_TIMEDATE_ENABLE:
             snprintf(s, len,
                      "Shows current date and/or time inside menu.");
             break;
+        case MENU_ENUM_LABEL_TIMEDATE_STYLE:
+           snprintf(s, len,
+              "Style to show the current date and/or time in.");
+           break;
         case MENU_ENUM_LABEL_BATTERY_LEVEL_ENABLE:
             snprintf(s, len,
                      "Shows current battery level inside menu.");
@@ -1779,6 +1949,13 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                      "Overlay Directory. \n"
                              " \n"
                              "Defines a directory where overlays are \n"
+                             "kept for easy access.");
+            break;
+        case MENU_ENUM_LABEL_VIDEO_LAYOUT_DIRECTORY:
+            snprintf(s, len,
+                     "Video Layout Directory. \n"
+                             " \n"
+                             "Defines a directory where video layouts are \n"
                              "kept for easy access.");
             break;
         case MENU_ENUM_LABEL_INPUT_MAX_USERS:
@@ -1842,6 +2019,16 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
         case MENU_ENUM_LABEL_INPUT_MENU_ENUM_TOGGLE_GAMEPAD_COMBO:
             snprintf(s, len,
                      "Gamepad button combination to toggle menu. \n"
+                             " \n"
+                             "0 - None \n"
+                             "1 - Press L + R + Y + D-Pad Down \n"
+                             "simultaneously. \n"
+                             "2 - Press L3 + R3 simultaneously. \n"
+                             "3 - Press Start + Select simultaneously.");
+            break;
+        case MENU_ENUM_LABEL_INPUT_QUIT_GAMEPAD_COMBO:
+            snprintf(s, len,
+                     "Gamepad button combination to quit. \n"
                              " \n"
                              "0 - None \n"
                              "1 - Press L + R + Y + D-Pad Down \n"
@@ -1923,11 +2110,11 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
             break;
         case MENU_ENUM_LABEL_CHEAT_INDEX_PLUS:
             snprintf(s, len,
-                     "Increment cheat index.\n");
+                     "Increase cheat index.");
             break;
         case MENU_ENUM_LABEL_CHEAT_INDEX_MINUS:
             snprintf(s, len,
-                     "Decrement cheat index.\n");
+                     "Decrease cheat index.");
             break;
         case MENU_ENUM_LABEL_SHADER_PREV:
             snprintf(s, len,
@@ -1939,7 +2126,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
             break;
         case MENU_ENUM_LABEL_RESET:
             snprintf(s, len,
-                     "Reset the content.\n");
+                     "Reset the content.");
             break;
         case MENU_ENUM_LABEL_PAUSE_TOGGLE:
             snprintf(s, len,
@@ -1947,15 +2134,27 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
             break;
         case MENU_ENUM_LABEL_CHEAT_TOGGLE:
             snprintf(s, len,
-                     "Toggle cheat index.\n");
+                     "Toggle cheat index.");
             break;
         case MENU_ENUM_LABEL_CHEAT_IDX:
             snprintf(s, len,
-                     "Index position in list.\n");
+                     "Index position in list.");
             break;
         case MENU_ENUM_LABEL_CHEAT_ADDRESS_BIT_POSITION:
             snprintf(s, len,
-                     "Address bitmask when Memory Search Size < 8-bit.\n");
+                     "Address bitmask when Memory Search Size < 8-bit.");
+            break;
+        case MENU_ENUM_LABEL_CHEAT_REPEAT_COUNT:
+            snprintf(s, len,
+                     "The number of times the cheat will be applied.\nUse with the other two Iteration options to affect large areas of memory.");
+            break;
+        case MENU_ENUM_LABEL_CHEAT_REPEAT_ADD_TO_ADDRESS:
+            snprintf(s, len,
+                     "After each 'Number of Iterations' the Memory Address will be increased by this number times the 'Memory Search Size'.");
+            break;
+        case MENU_ENUM_LABEL_CHEAT_REPEAT_ADD_TO_VALUE:
+            snprintf(s, len,
+                     "After each 'Number of Iterations' the Value will be increased by this amount.");
             break;
         case MENU_ENUM_LABEL_CHEAT_MATCH_IDX:
             snprintf(s, len,
@@ -1963,15 +2162,15 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
             break;
         case MENU_ENUM_LABEL_CHEAT_START_OR_CONT:
             snprintf(s, len,
-                     "Scan memory to create new cheats");
+                     "Scan memory to create new cheats.");
             break;
         case MENU_ENUM_LABEL_CHEAT_START_OR_RESTART:
             snprintf(s, len,
-                     "Left/Right to change bit-size\n");
+                     "Left/Right to change bit-size.");
             break;
         case MENU_ENUM_LABEL_CHEAT_SEARCH_EXACT:
             snprintf(s, len,
-                     "Left/Right to change value\n");
+                     "Left/Right to change value.");
             break;
         case MENU_ENUM_LABEL_CHEAT_SEARCH_LT:
             snprintf(s, len,
@@ -1991,11 +2190,11 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
             break;
         case MENU_ENUM_LABEL_CHEAT_SEARCH_EQPLUS:
             snprintf(s, len,
-                     "Left/Right to change value\n");
+                     "Left/Right to change value.");
             break;
         case MENU_ENUM_LABEL_CHEAT_SEARCH_EQMINUS:
             snprintf(s, len,
-                     "Left/Right to change value\n");
+                     "Left/Right to change value.");
             break;
         case MENU_ENUM_LABEL_CHEAT_ADD_MATCHES:
             snprintf(s, len,
@@ -2047,7 +2246,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
             snprintf(s, len,
                      "Frame advance when content is paused.");
             break;
-        case MENU_ENUM_LABEL_MOVIE_RECORD_TOGGLE:
+        case MENU_ENUM_LABEL_BSV_RECORD_TOGGLE:
             snprintf(s, len,
                      "Toggle between recording and not.");
             break;
@@ -2112,8 +2311,7 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
                              "you can set '%s' to false.",
                      msg_hash_to_str(MENU_ENUM_LABEL_VALUE_SETTINGS),
                      msg_hash_to_str(MENU_ENUM_LABEL_VALUE_OVERLAY_SETTINGS),
-                     msg_hash_to_str(MENU_ENUM_LABEL_VALUE_INPUT_OVERLAY_HIDE_IN_MENU)
-            );
+                     msg_hash_to_str(MENU_ENUM_LABEL_VALUE_INPUT_OVERLAY_HIDE_IN_MENU));
             break;
         case MENU_ENUM_LABEL_VALUE_VIDEO_MESSAGE_BGCOLOR_ENABLE:
             snprintf(s, len,
@@ -2151,6 +2349,15 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
             snprintf(s, len,
                      "MIDI driver to use.");
             break;
+#ifdef HAVE_LAKKA
+        case MENU_ENUM_LABEL_TIMEZONE:
+            snprintf(s, len,
+                     "Displays a list of available timezones. After\n"
+                     "selecting a time zone, time and date is adjusted\n"
+                     "to the selected time zone. It assumes, that system/\n"
+                     "hardware clock is set to UTC.");
+            break;
+#endif
         case MENU_ENUM_LABEL_MIDI_INPUT:
             snprintf(s, len,
                      "Sets the input device (driver specific).\n"
@@ -2171,6 +2378,19 @@ int menu_hash_get_help_us_enum(enum msg_hash_enums msg, char *s, size_t len)
             snprintf(s, len,
                      "Sets the master volume of the output device.");
             break;
+#ifdef __linux__
+        case MENU_ENUM_LABEL_GAMEMODE_ENABLE:
+            snprintf(s, len,
+                     "Enabling Linux GameMode can improve latency, fix audio\n"
+                     "crackling issues and maximize overall performance by\n"
+                     "automatically configuring your CPU and GPU for best\n"
+                     "performance.\n"
+                     " \n"
+                     "The GameMode software needs to be installed for this to\n"
+                     "work. See https://github.com/FeralInteractive/gamemode for\n"
+                     "information on how to install GameMode.");
+           break;
+#endif
         default:
             if (string_is_empty(s))
                 strlcpy(s, msg_hash_to_str(MENU_ENUM_LABEL_VALUE_NO_INFORMATION_AVAILABLE), len);
@@ -2207,7 +2427,8 @@ static const char *menu_hash_to_str_us_label_enum(enum msg_hash_enums msg)
 }
 #endif
 
-const char *msg_hash_to_str_us(enum msg_hash_enums msg) {
+const char *msg_hash_to_str_us(enum msg_hash_enums msg)
+{
 #ifdef HAVE_MENU
     const char *ret = menu_hash_to_str_us_label_enum(msg);
 
@@ -2215,7 +2436,8 @@ const char *msg_hash_to_str_us(enum msg_hash_enums msg) {
        return ret;
 #endif
 
-    switch (msg) {
+    switch (msg)
+    {
 #include "msg_hash_us.h"
         default:
 #if 0

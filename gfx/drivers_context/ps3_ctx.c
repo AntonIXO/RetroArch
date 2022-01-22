@@ -17,23 +17,20 @@
 #include <stdint.h>
 
 #ifdef HAVE_CONFIG_H
-#include "config.h"
+#include "../../config.h"
 #endif
 
-#ifndef __PSL1GHT__
 #include <sys/spu_initialize.h>
-#endif
 
-#ifdef HAVE_LIBDBGFONT
-#ifndef __PSL1GHT__
-#include <cell/dbgfont.h>
-#endif
-#endif
+#include <compat/strl.h>
 
 #include "../../configuration.h"
-#include "../../defines/ps3_defines.h"
+#include "../../retroarch.h"
+#include "../../verbosity.h"
+#include <defines/ps3_defines.h>
+#include "../../frontend/frontend_driver.h"
 #include "../common/gl_common.h"
-#include "../video_driver.h"
+#include "../common/gl2_common.h"
 
 typedef struct gfx_ctx_ps3_data
 {
@@ -45,6 +42,7 @@ typedef struct gfx_ctx_ps3_data
 #endif
 } gfx_ctx_ps3_data_t;
 
+/* TODO/FIXME - static global */
 static enum gfx_ctx_api ps3_api = GFX_CTX_NONE;
 
 static void gfx_ctx_ps3_get_resolution(unsigned idx,
@@ -140,21 +138,20 @@ static void gfx_ctx_ps3_get_available_resolutions(void)
    global->console.screen.resolutions.check = true;
 }
 
-static void gfx_ctx_ps3_set_swap_interval(void *data, unsigned interval)
+static void gfx_ctx_ps3_set_swap_interval(void *data, int interval)
 {
 #if defined(HAVE_PSGL)
-   if (interval)
-      glEnable(GL_VSYNC_SCE);
+   if (interval == 1)
+      gl_enable(GL_VSYNC_SCE);
    else
-      glDisable(GL_VSYNC_SCE);
+      gl_disable(GL_VSYNC_SCE);
 #endif
 }
 
 static void gfx_ctx_ps3_check_window(void *data, bool *quit,
-      bool *resize, unsigned *width, unsigned *height,
-      bool is_shutdown)
+      bool *resize, unsigned *width, unsigned *height)
 {
-   gl_t *gl = data;
+   gl2_t *gl = data;
 
    *quit    = false;
    *resize  = false;
@@ -163,25 +160,11 @@ static void gfx_ctx_ps3_check_window(void *data, bool *quit,
       *resize = true;
 }
 
-static bool gfx_ctx_ps3_has_focus(void *data)
-{
-   (void)data;
-   return true;
-}
+static bool gfx_ctx_ps3_has_focus(void *data) { return true; }
+static bool gfx_ctx_ps3_suppress_screensaver(void *data, bool enable) { return false; }
 
-static bool gfx_ctx_ps3_suppress_screensaver(void *data, bool enable)
+static void gfx_ctx_ps3_swap_buffers(void *data)
 {
-   (void)data;
-   (void)enable;
-   return false;
-}
-
-static void gfx_ctx_ps3_swap_buffers(void *data, void *data2)
-{
-   (void)data;
-#ifdef HAVE_LIBDBGFONT
-   cellDbgFontDraw();
-#endif
 #ifdef HAVE_PSGL
    psglSwap();
 #endif
@@ -201,7 +184,7 @@ static void gfx_ctx_ps3_get_video_size(void *data,
 #endif
 }
 
-static void *gfx_ctx_ps3_init(video_frame_info_t *video_info, void *video_driver)
+static void *gfx_ctx_ps3_init(void *video_driver)
 {
 #ifdef HAVE_PSGL
    PSGLdeviceParameters params;
@@ -210,9 +193,6 @@ static void *gfx_ctx_ps3_init(video_frame_info_t *video_info, void *video_driver
    global_t *global = global_get_ptr();
    gfx_ctx_ps3_data_t *ps3 = (gfx_ctx_ps3_data_t*)
       calloc(1, sizeof(gfx_ctx_ps3_data_t));
-
-   (void)video_driver;
-   (void)global;
 
    if (!ps3)
       return NULL;
@@ -278,12 +258,8 @@ static void *gfx_ctx_ps3_init(video_frame_info_t *video_info, void *video_driver
 }
 
 static bool gfx_ctx_ps3_set_video_mode(void *data,
-      video_frame_info_t *video_info,
       unsigned width, unsigned height,
-      bool fullscreen)
-{
-   return true;
-}
+      bool fullscreen) { return true; }
 
 static void gfx_ctx_ps3_destroy_resources(gfx_ctx_ps3_data_t *ps3)
 {
@@ -311,26 +287,19 @@ static void gfx_ctx_ps3_destroy(void *data)
 
 static void gfx_ctx_ps3_input_driver(void *data,
       const char *joypad_name,
-      const input_driver_t **input, void **input_data)
+      input_driver_t **input, void **input_data)
 {
-   void *ps3input       = input_ps3.init(joypad_name);
+   void *ps3input       = input_driver_init_wrap(&input_ps3, joypad_name);
 
    *input               = ps3input ? &input_ps3 : NULL;
    *input_data          = ps3input;
 }
 
-static enum gfx_ctx_api gfx_ctx_ps3_get_api(void *data)
-{
-   return ps3_api;
-}
+static enum gfx_ctx_api gfx_ctx_ps3_get_api(void *data) { return ps3_api; }
 
 static bool gfx_ctx_ps3_bind_api(void *data,
       enum gfx_ctx_api api, unsigned major, unsigned minor)
 {
-   (void)data;
-   (void)major;
-   (void)minor;
-
    ps3_api = api;
 
    if (
@@ -343,7 +312,7 @@ static bool gfx_ctx_ps3_bind_api(void *data,
 }
 
 static void gfx_ctx_ps3_get_video_output_size(void *data,
-      unsigned *width, unsigned *height)
+      unsigned *width, unsigned *height, char *desc, size_t desc_len)
 {
    global_t *global = global_get_ptr();
 
@@ -401,14 +370,15 @@ static void gfx_ctx_ps3_get_video_output_next(void *data)
 static uint32_t gfx_ctx_ps3_get_flags(void *data)
 {
    uint32_t flags = 0;
-   BIT32_SET(flags, GFX_CTX_FLAGS_NONE);
+
+#ifdef HAVE_CG
+   BIT32_SET(flags, GFX_CTX_FLAGS_SHADERS_CG);
+#endif
+
    return flags;
 }
 
-static void gfx_ctx_ps3_set_flags(void *data, uint32_t flags)
-{
-   (void)data;
-}
+static void gfx_ctx_ps3_set_flags(void *data, uint32_t flags) { }
 
 const gfx_ctx_driver_t gfx_ctx_ps3 = {
    gfx_ctx_ps3_init,
@@ -429,7 +399,7 @@ const gfx_ctx_driver_t gfx_ctx_ps3 = {
    NULL, /* set_resize */
    gfx_ctx_ps3_has_focus,
    gfx_ctx_ps3_suppress_screensaver,
-   NULL, /* has_windowed */
+   false, /* has_windowed */
    gfx_ctx_ps3_swap_buffers,
    gfx_ctx_ps3_input_driver,
    NULL,
@@ -442,4 +412,3 @@ const gfx_ctx_driver_t gfx_ctx_ps3 = {
    NULL,
    NULL
 };
-

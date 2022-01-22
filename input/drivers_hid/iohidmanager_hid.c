@@ -33,9 +33,9 @@
 
 typedef struct apple_input_rec
 {
-  IOHIDElementCookie cookie;
-  uint32_t id;
-  struct apple_input_rec *next;
+   IOHIDElementCookie cookie;
+   uint32_t id;
+   struct apple_input_rec *next;
 } apple_input_rec_t;
 
 typedef struct apple_hid
@@ -43,7 +43,7 @@ typedef struct apple_hid
    IOHIDManagerRef ptr;
    joypad_connection_t *slots;
    uint32_t buttons[MAX_USERS];
-   int16_t axes[MAX_USERS][6];
+   int16_t axes[MAX_USERS][11];
    int8_t hats[MAX_USERS][2]; /* MacOS only supports 1 hat AFAICT */
 } iohidmanager_hid_t;
 
@@ -51,13 +51,29 @@ struct iohidmanager_hid_adapter
 {
    uint32_t slot;
    IOHIDDeviceRef handle;
-   char name[PATH_MAX_LENGTH];
+   uint32_t locationId;
+   char name[NAME_MAX_LENGTH];
    apple_input_rec_t *axes;
    apple_input_rec_t *hats;
    apple_input_rec_t *buttons;
    uint8_t data[2048];
-   uint32_t uniqueId;
 };
+
+enum IOHIDReportType translate_hid_report_type(
+   int report_type)
+{
+   switch (report_type)
+   {
+      case HID_REPORT_FEATURE:
+         return kIOHIDReportTypeFeature;
+      case HID_REPORT_INPUT:
+         return kIOHIDReportTypeInput;
+      case HID_REPORT_OUTPUT:
+         return kIOHIDReportTypeOutput;
+      case HID_REPORT_COUNT:
+         return kIOHIDReportTypeCount;
+   }
+}
 
 CFComparisonResult iohidmanager_sort_elements(const void *val1, const void *val2, void *context)
 {
@@ -144,43 +160,104 @@ static void iohidmanager_hid_joypad_get_buttons(void *data,
     BIT256_CLEAR_ALL_PTR(state);
 }
 
-static bool iohidmanager_hid_joypad_button(void *data,
+static int16_t iohidmanager_hid_joypad_button(void *data,
       unsigned port, uint16_t joykey)
 {
-  input_bits_t buttons;
-  iohidmanager_hid_t *hid   = (iohidmanager_hid_t*)data;
-  unsigned hat_dir = GET_HAT_DIR(joykey);
+   unsigned hat_dir;
+   input_bits_t buttons;
+   iohidmanager_hid_t *hid              = (iohidmanager_hid_t*)data;
 
-  iohidmanager_hid_joypad_get_buttons(data, port, &buttons);
+   if (port >= DEFAULT_MAX_PADS)
+      return 0;
+
+   iohidmanager_hid_joypad_get_buttons(data, port, &buttons);
+
+   hat_dir                  = GET_HAT_DIR(joykey);
 
    /* Check hat. */
    if (hat_dir)
    {
       unsigned h = GET_HAT(joykey);
       if (h >= 1)
-         return false;
+         return 0;
 
-      switch(hat_dir)
+      switch (hat_dir)
       {
          case HAT_LEFT_MASK:
-            return hid->hats[port][0] < 0;
+            return (hid->hats[port][0] < 0);
          case HAT_RIGHT_MASK:
-            return hid->hats[port][0] > 0;
+            return (hid->hats[port][0] > 0);
          case HAT_UP_MASK:
-            return hid->hats[port][1] < 0;
+            return (hid->hats[port][1] < 0);
          case HAT_DOWN_MASK:
-            return hid->hats[port][1] > 0;
+            return (hid->hats[port][1] > 0);
+         default:
+            break;
       }
+      /* hat requested and no hat button down */
+   }
+   else if (joykey < 32)
+      return ((BIT256_GET(buttons, joykey) != 0)
+            || ((hid->buttons[port] & (1 << joykey)) != 0));
+   return 0;
+}
 
-      return 0;
+static int16_t iohidmanager_hid_joypad_axis(void *data,
+      unsigned port, uint32_t joyaxis)
+{
+   iohidmanager_hid_t   *hid = (iohidmanager_hid_t*)data;
+
+   if (AXIS_NEG_GET(joyaxis) < 11)
+   {
+      int16_t val  = hid->axes[port][AXIS_NEG_GET(joyaxis)]
+         + pad_connection_get_axis(&hid->slots[port],
+               port, AXIS_NEG_GET(joyaxis));
+
+      if (val < 0)
+         return val;
+   }
+   else if (AXIS_POS_GET(joyaxis) < 11)
+   {
+      int16_t val = hid->axes[port][AXIS_POS_GET(joyaxis)]
+         + pad_connection_get_axis(&hid->slots[port],
+               port, AXIS_POS_GET(joyaxis));
+
+      if (val > 0)
+         return val;
+   }
+   return 0;
+}
+
+
+static int16_t iohidmanager_hid_joypad_state(
+      void *data,
+      rarch_joypad_info_t *joypad_info,
+      const void *binds_data,
+      unsigned port)
+{
+   unsigned i;
+   int16_t ret                          = 0;
+   const struct retro_keybind *binds    = (const struct retro_keybind*)binds_data;
+   uint16_t port_idx                    = joypad_info->joy_idx;
+
+   for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
+   {
+      /* Auto-binds are per joypad, not per user. */
+      const uint64_t joykey  = (binds[i].joykey != NO_BTN)
+         ? binds[i].joykey  : joypad_info->auto_binds[i].joykey;
+      const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
+         ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
+      if (
+               (uint16_t)joykey != NO_BTN
+            && iohidmanager_hid_joypad_button(data, port_idx, (uint16_t)joykey))
+         ret |= ( 1 << i);
+      else if (joyaxis != AXIS_NONE &&
+            ((float)abs(iohidmanager_hid_joypad_axis(data, port_idx, joyaxis))
+             / 0x8000) > joypad_info->axis_threshold)
+         ret |= (1 << i);
    }
 
-   /* Check the button. */
-   if ((port < MAX_USERS) && (joykey < 32))
-      return (BIT256_GET(buttons, joykey) != 0)
-         || ((hid->buttons[port] & (1 << joykey)) != 0);
-
-   return false;
+   return ret;
 }
 
 static bool iohidmanager_hid_joypad_rumble(void *data, unsigned pad,
@@ -190,37 +267,6 @@ static bool iohidmanager_hid_joypad_rumble(void *data, unsigned pad,
    if (!hid)
       return false;
    return pad_connection_rumble(&hid->slots[pad], pad, effect, strength);
-}
-
-static int16_t iohidmanager_hid_joypad_axis(void *data,
-      unsigned port, uint32_t joyaxis)
-{
-   iohidmanager_hid_t   *hid = (iohidmanager_hid_t*)data;
-   int16_t               val = 0;
-
-   if (joyaxis == AXIS_NONE)
-      return 0;
-
-   if (AXIS_NEG_GET(joyaxis) < 6)
-   {
-      val += hid->axes[port][AXIS_NEG_GET(joyaxis)];
-      val += pad_connection_get_axis(&hid->slots[port],
-            port, AXIS_NEG_GET(joyaxis));
-
-      if (val >= 0)
-         val = 0;
-   }
-   else if (AXIS_POS_GET(joyaxis) < 6)
-   {
-      val += hid->axes[port][AXIS_POS_GET(joyaxis)];
-      val += pad_connection_get_axis(&hid->slots[port],
-            port, AXIS_POS_GET(joyaxis));
-
-      if (val <= 0)
-         val = 0;
-   }
-
-   return val;
 }
 
 static void iohidmanager_hid_device_send_control(void *data,
@@ -288,13 +334,17 @@ static void iohidmanager_hid_device_input_callback(void *data, IOReturn result,
                         while (tmp && tmp->cookie != (IOHIDElementCookie)cookie)
                            tmp = tmp->next;
 
-                        if (tmp->cookie == (IOHIDElementCookie)cookie)
+                        if (tmp && tmp->cookie == (IOHIDElementCookie)cookie)
                         {
-                           CFIndex range = IOHIDElementGetLogicalMax(element) - IOHIDElementGetLogicalMin(element);
+                           CFIndex min = IOHIDElementGetLogicalMin(element);
+                           CFIndex range = IOHIDElementGetLogicalMax(element) - min;
                            CFIndex val   = IOHIDValueGetIntegerValue(value);
 
                            if (range == 3)
                               val *= 2;
+
+                           if(min == 1)
+                              val--;
 
                            switch(val)
                            {
@@ -383,6 +433,39 @@ static void iohidmanager_hid_device_input_callback(void *data, IOReturn result,
                break;
          }
          break;
+      case kHIDPage_Simulation:
+          switch (type)
+          {
+             case kIOHIDElementTypeInput_Misc:
+                 switch (use)
+                 {
+                 default:
+                     tmp = adapter->axes;
+
+                     while (tmp && tmp->cookie != (IOHIDElementCookie)cookie)
+                     {
+                        tmp = tmp->next;
+                     }
+                     if (tmp)
+                     {
+                        if (tmp->cookie == (IOHIDElementCookie)cookie)
+                        {
+                           CFIndex min   = IOHIDElementGetPhysicalMin(element);
+                           CFIndex state = IOHIDValueGetIntegerValue(value) - min;
+                           CFIndex max   = IOHIDElementGetPhysicalMax(element) - min;
+                           float val     = (float)state / (float)max;
+
+                           hid->axes[adapter->slot][tmp->id] =
+                              ((val * 2.0f) - 1.0f) * 32767.0f;
+                        }
+                     }
+                     else
+                        pushed_button = 1;
+                     break;
+                 }
+                 break;
+          }
+          break;
    }
 
    if (pushed_button)
@@ -408,14 +491,29 @@ static void iohidmanager_hid_device_input_callback(void *data, IOReturn result,
    }
 }
 
-static void iohidmanager_hid_device_remove(void *data,
-      IOReturn result, void* sender)
+static void iohidmanager_hid_device_remove(IOHIDDeviceRef device, iohidmanager_hid_t* hid)
 {
-   struct iohidmanager_hid_adapter *adapter =
-      (struct iohidmanager_hid_adapter*)data;
-   iohidmanager_hid_t *hid = (iohidmanager_hid_t*)
-      hid_driver_get_data();
-
+   struct iohidmanager_hid_adapter *adapter = NULL;
+   int i;
+   
+   /*loop though the controller ports and find the device with a matching IOHINDeviceRef*/
+   for (i=0; i<MAX_USERS; i++)
+   {
+      struct iohidmanager_hid_adapter *a = (struct iohidmanager_hid_adapter*)hid->slots[i].data;
+      if (!a)
+         continue;
+      if (a->handle == device)
+      {
+         adapter = a;
+         break;
+      }
+   }
+   if (!adapter)
+   {
+      RARCH_LOG("Error removing device %p\n",device, hid);
+      return;
+   }
+   int slot = adapter->slot;
    if (hid && adapter && (adapter->slot < MAX_USERS))
    {
       input_autoconfigure_disconnect(adapter->slot, adapter->name);
@@ -451,6 +549,7 @@ static void iohidmanager_hid_device_remove(void *data,
       }
       free(adapter);
    }
+   RARCH_LOG("Device removed from port %d\n", slot);
 }
 
 static int32_t iohidmanager_hid_device_get_int_property(
@@ -486,13 +585,7 @@ static uint32_t iohidmanager_hid_device_get_location_id(IOHIDDeviceRef device)
          CFSTR(kIOHIDLocationIDKey));
 }
 
-static uint32_t iohidmanager_hid_device_get_unique_id(IOHIDDeviceRef device)
-{
-	/* osx seems to assign an unique id to each device when they are plugged in
-	 * the id change if device is unplugged/plugged, but it's unique amongst the
-	 * other device plugged */
-  return iohidmanager_hid_device_get_int_property(device,CFSTR(kIOHIDUniqueIDKey));
-}
+
 
 static void iohidmanager_hid_device_get_product_string(
       IOHIDDeviceRef device, char *buf, size_t len)
@@ -504,52 +597,67 @@ static void iohidmanager_hid_device_get_product_string(
       CFStringGetCString(ref, buf, len, kCFStringEncodingUTF8);
 }
 
-
-
-
 static void iohidmanager_hid_device_add_autodetect(unsigned idx,
       const char *device_name, const char *driver_name,
       uint16_t dev_vid, uint16_t dev_pid)
 {
-   if (!input_autoconfigure_connect(
+   input_autoconfigure_connect(
          device_name,
          NULL,
-         driver_name,
+         "hid",
          idx,
          dev_vid,
          dev_pid
-         ))
-      input_config_set_device_name(idx, device_name);
+         );
 
    RARCH_LOG("Port %d: %s.\n", idx, device_name);
 }
 
-static void iohidmanager_hid_device_add_device(IOHIDDeviceRef device, iohidmanager_hid_t* hid)
+
+static void iohidmanager_hid_device_add(IOHIDDeviceRef device, iohidmanager_hid_t* hid)
 {
    int i;
 
-	/* get device unique id */
-	uint32_t deviceUniqueId = iohidmanager_hid_device_get_unique_id(device);
-	
-	/* check if pad was already registered previously (by deterministic method)
-	 * if so do not re-add the pad */
-	for (i=0; i<MAX_USERS; i++)
-	{
-		struct iohidmanager_hid_adapter *a = hid->slots[i].data;
-		if (a == NULL)
-			continue;
-		if (a->uniqueId == deviceUniqueId)
-			return;
-	}
-	
+    static const uint32_t axis_use_ids[11] =
+    {
+        kHIDUsage_GD_X,
+        kHIDUsage_GD_Y,
+        kHIDUsage_GD_Rx,
+        kHIDUsage_GD_Ry,
+        kHIDUsage_GD_Z,
+        kHIDUsage_GD_Rz,
+        kHIDUsage_Sim_Rudder,
+        kHIDUsage_Sim_Throttle,
+        kHIDUsage_Sim_Steering,
+        kHIDUsage_Sim_Accelerator,
+        kHIDUsage_Sim_Brake
+    };
+
+   /* check if pad was already registered previously when the application was
+    started (by deterministic method). if so do not re-add the pad */
+   uint32_t deviceLocationId = iohidmanager_hid_device_get_location_id(device);
+   for (i=0; i<MAX_USERS; i++)
+   {
+      struct iohidmanager_hid_adapter *a = (struct iohidmanager_hid_adapter*)hid->slots[i].data;
+      if (!a)
+         continue;
+      if (a->locationId == deviceLocationId)
+      {
+         a->handle = device;
+       /* while we're not re-adding the controller, we are re-assigning the
+        handle so it can be removed properly upon disconnect */
+         return;
+      }
+   }
+
    IOReturn ret;
    uint16_t dev_vid, dev_pid;
    CFArrayRef elements_raw;
    int count;
    CFMutableArrayRef elements;
    CFRange range;
-   bool found_axis[6] =
-   { false, false, false, false, false, false };
+   bool found_axis[11] =
+   { false, false, false, false, false, false, false, false, false, false, false };
    apple_input_rec_t *tmp                   = NULL;
    apple_input_rec_t *tmpButtons            = NULL;
    apple_input_rec_t *tmpAxes               = NULL;
@@ -562,6 +670,7 @@ static void iohidmanager_hid_device_add_device(IOHIDDeviceRef device, iohidmanag
       goto error;
 
    adapter->handle        = device;
+   adapter->locationId = deviceLocationId;
 
    ret = IOHIDDeviceOpen(device, kIOHIDOptionsTypeNone);
 
@@ -571,8 +680,6 @@ static void iohidmanager_hid_device_add_device(IOHIDDeviceRef device, iohidmanag
    /* Move the device's run loop to this thread. */
    IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetCurrent(),
          kCFRunLoopCommonModes);
-   IOHIDDeviceRegisterRemovalCallback(device,
-         iohidmanager_hid_device_remove, adapter);
 
 #ifndef IOS
    iohidmanager_hid_device_get_product_string(device, adapter->name,
@@ -581,7 +688,6 @@ static void iohidmanager_hid_device_add_device(IOHIDDeviceRef device, iohidmanag
 
    dev_vid = iohidmanager_hid_device_get_vendor_id  (device);
    dev_pid = iohidmanager_hid_device_get_product_id (device);
-   adapter->uniqueId = deviceUniqueId;
 
    adapter->slot = pad_connection_pad_init(hid->slots,
          adapter->name, dev_vid, dev_pid, adapter,
@@ -590,16 +696,18 @@ static void iohidmanager_hid_device_add_device(IOHIDDeviceRef device, iohidmanag
    if (adapter->slot == -1)
       goto error;
 
-   if (pad_connection_has_interface(hid->slots, adapter->slot))
+   if (string_is_empty(adapter->name))
+      strcpy(adapter->name, "Unknown Controller With No Name");
+   
+   if (pad_connection_has_interface(hid->slots, adapter->slot)) {
       IOHIDDeviceRegisterInputReportCallback(device,
             adapter->data + 1, sizeof(adapter->data) - 1,
             iohidmanager_hid_device_report, adapter);
-   else
+   }
+   else {
       IOHIDDeviceRegisterInputValueCallback(device,
             iohidmanager_hid_device_input_callback, adapter);
-
-   if (string_is_empty(adapter->name))
-      goto error;
+   }
 
    /* scan for buttons, axis, hats */
    elements_raw = IOHIDDeviceCopyMatchingElements(device, NULL, kIOHIDOptionsTypeNone);
@@ -607,6 +715,8 @@ static void iohidmanager_hid_device_add_device(IOHIDDeviceRef device, iohidmanag
    elements     = CFArrayCreateMutableCopy(
          kCFAllocatorDefault,(CFIndex)count,elements_raw);
    range        = CFRangeMake(0,count);
+
+   CFRelease(elements_raw);
 
    CFArraySortValues(elements,
          range, iohidmanager_sort_elements, NULL);
@@ -631,14 +741,6 @@ static void iohidmanager_hid_device_add_device(IOHIDDeviceRef device, iohidmanag
          case kHIDPage_GenericDesktop:
             switch (type)
             {
-               case kIOHIDElementTypeCollection:
-               case kIOHIDElementTypeInput_ScanCodes:
-               case kIOHIDElementTypeFeature:
-               case kIOHIDElementTypeInput_Button:
-               case kIOHIDElementTypeOutput:
-               case kIOHIDElementTypeInput_Axis:
-                  /* TODO/FIXME */
-                  break;
                case kIOHIDElementTypeInput_Misc:
                   switch (use)
                   {
@@ -655,13 +757,11 @@ static void iohidmanager_hid_device_add_device(IOHIDDeviceRef device, iohidmanag
                      default:
                         {
                            uint32_t i = 0;
-                           static const uint32_t axis_use_ids[6] =
-                           { 48, 49, 51, 52, 50, 53 };
 
-                           while (i < 6 && axis_use_ids[i] != use)
+                           while (i < 11 && axis_use_ids[i] != use)
                               i++;
 
-                           if (i < 6)
+                           if (i < 11)
                            {
 
                               apple_input_rec_t *axis = (apple_input_rec_t *)malloc(sizeof(apple_input_rec_t));
@@ -692,25 +792,65 @@ static void iohidmanager_hid_device_add_device(IOHIDDeviceRef device, iohidmanag
                         break;
                   }
                   break;
+               default:
+                  /* TODO/FIXME */
+                  break;
             }
             break;
          case kHIDPage_Consumer:
          case kHIDPage_Button:
             switch (type)
             {
-               case kIOHIDElementTypeCollection:
-               case kIOHIDElementTypeFeature:
-               case kIOHIDElementTypeInput_ScanCodes:
-               case kIOHIDElementTypeInput_Axis:
-               case kIOHIDElementTypeOutput:
-                  /* TODO/FIXME */
-                  break;
                case kIOHIDElementTypeInput_Misc:
                case kIOHIDElementTypeInput_Button:
                   detected_button = 1;
                   break;
+               default:
+                  /* TODO/FIXME */
+                  break;
             }
             break;
+
+         case kHIDPage_Simulation:
+             switch (use)
+             {
+                 default:
+                 {
+                     uint32_t i = 0;
+
+                     while (i < 11 && axis_use_ids[i] != use)
+                        i++;
+
+                     if (i < 11)
+                     {
+                        apple_input_rec_t *axis = (apple_input_rec_t *)malloc(sizeof(apple_input_rec_t));
+                        axis->id                = i;
+                        axis->cookie            = (IOHIDElementCookie)cookie;
+                        axis->next              = NULL;
+
+                        if (iohidmanager_check_for_id(adapter->axes,i))
+                        {
+                           /* axis ID already exists, save to tmp for appending later */
+                           if (tmpAxes)
+                              iohidmanager_append_record(tmpAxes, axis);
+                           else
+                              tmpAxes           = axis;
+                        }
+                        else
+                        {
+                           found_axis[axis->id] = true;
+                           if (adapter->axes)
+                              iohidmanager_append_record(adapter->axes, axis);
+                           else
+                              adapter->axes     = axis;
+                        }
+                     }
+                     else
+                        detected_button = 1;
+                     }
+                     break;
+                }
+                break;
       }
 
       if (detected_button)
@@ -737,10 +877,12 @@ static void iohidmanager_hid_device_add_device(IOHIDDeviceRef device, iohidmanag
       }
    }
 
+   CFRelease(elements);
+
    /* take care of buttons/axes with duplicate 'use' values */
-   for (i = 0; i < 6; i++)
+   for (i = 0; i < 11; i++)
    {
-      if (found_axis[i] == false && tmpAxes)
+      if (!found_axis[i] && tmpAxes)
       {
          apple_input_rec_t *next = tmpAxes->next;
          tmpAxes->id             = i;
@@ -770,10 +912,8 @@ static void iohidmanager_hid_device_add_device(IOHIDDeviceRef device, iohidmanag
       tmpButtons              = next;
    }
 
-
    iohidmanager_hid_device_add_autodetect(adapter->slot,
          adapter->name, iohidmanager_hid.ident, dev_vid, dev_pid);
-
    return;
 
 error:
@@ -814,12 +954,20 @@ error:
 }
 
 
-static void iohidmanager_hid_device_add(void *data, IOReturn result,
-   void* sender, IOHIDDeviceRef device)
+static void iohidmanager_hid_device_matched(void *data, IOReturn result,
+                                            void* sender, IOHIDDeviceRef device)
 {
-	iohidmanager_hid_t *hid = (iohidmanager_hid_t*)	hid_driver_get_data();
-	iohidmanager_hid_device_add_device(device, hid);
+   iohidmanager_hid_t *hid = (iohidmanager_hid_t*) hid_driver_get_data();
+   
+   iohidmanager_hid_device_add(device, hid);
 }
+static void iohidmanager_hid_device_removed(void *data, IOReturn result,
+                                            void* sender, IOHIDDeviceRef device)
+{
+   iohidmanager_hid_t *hid = (iohidmanager_hid_t*) hid_driver_get_data();
+   iohidmanager_hid_device_remove(device, hid);
+}
+
 
 static void iohidmanager_hid_append_matching_dictionary(
       CFMutableArrayRef array,
@@ -852,13 +1000,11 @@ static int iohidmanager_hid_manager_init(iohidmanager_hid_t *hid)
 
    if (!hid->ptr)
       return -1;
-
    IOHIDManagerSetDeviceMatching(hid->ptr, NULL);
    IOHIDManagerScheduleWithRunLoop(hid->ptr, CFRunLoopGetCurrent(),
          kCFRunLoopDefaultMode);
    return 0;
 }
-
 
 static int iohidmanager_hid_manager_free(iohidmanager_hid_t *hid)
 {
@@ -877,99 +1023,31 @@ static int iohidmanager_hid_manager_free(iohidmanager_hid_t *hid)
 static int iohidmanager_hid_manager_set_device_matching(
       iohidmanager_hid_t *hid)
 {
-	/* deterministically add all device currently plugged when lanching retroarch
-	 * order by location id which seems to correspond to usb port number */
-	CFSetRef set = IOHIDManagerCopyDevices(hid->ptr);
-	CFIndex num_devices = CFSetGetCount(set);
-	IOHIDDeviceRef *device_array = calloc(num_devices, sizeof(IOHIDDeviceRef));
-	CFSetGetValues(set, (const void **) device_array);
+   /* register call back to dynamically add device plugged when retroarch is
+    * running
+    * those will be added after the one plugged when retroarch was launched,
+    * and by order they are plugged in (so not deterministic) */
+   CFMutableArrayRef matcher = CFArrayCreateMutable(kCFAllocatorDefault, 0,
+      &kCFTypeArrayCallBacks);
 
-	/* re order device by location id */
-	typedef struct hid_list
-	{
-	  IOHIDDeviceRef device;
-	  uint32_t lid;
-	  struct hid_list *next;
-	} hid_list_t;
-	
-	hid_list_t* devList = NULL;
-	for (long i=0; i<num_devices;i++)
-	{
-		IOHIDDeviceRef dev = device_array[i];
-		/* filter gamepad/joystick devices */
-		if (	IOHIDDeviceConformsTo(dev, kHIDPage_GenericDesktop, kHIDUsage_GD_Joystick)
-			||	IOHIDDeviceConformsTo(dev, kHIDPage_GenericDesktop, kHIDUsage_GD_GamePad)
-			)
-		{
-			if ( devList == NULL )
-			{
-				devList = (hid_list_t *)malloc(sizeof(hid_list_t));
-				devList->device = dev;
-				devList->lid = iohidmanager_hid_device_get_location_id(dev);
-				devList->next = NULL;
-			}
-			else
-			{
-				hid_list_t * new = (hid_list_t *)malloc(sizeof(hid_list_t));
-				new->device = dev;
-				new->lid = iohidmanager_hid_device_get_location_id(dev);
-				new->next = NULL;
+   if (!matcher)
+      return -1;
 
-				hid_list_t * ptr = devList;
-				if ( new->lid < ptr->lid )
-				{
-					new->next = ptr;
-					devList = new;
-				}
-				else
-				{
-					while ( ( ptr->lid < new->lid ) && (ptr->next != NULL) )
-					{
-						ptr = ptr->next;
-					}
-					new->next = ptr->next;
-					ptr->next = new;
-				}
-			}
-		}
-	}
+   iohidmanager_hid_append_matching_dictionary(matcher,
+      kHIDPage_GenericDesktop,
+      kHIDUsage_GD_Joystick);
+   iohidmanager_hid_append_matching_dictionary(matcher,
+      kHIDPage_GenericDesktop,
+      kHIDUsage_GD_GamePad);
+   /* The GameCube Adapter reports usage id 0x00 */
+   iohidmanager_hid_append_matching_dictionary(matcher, kHIDPage_Game, 0x00);
+   
+   IOHIDManagerSetDeviceMatchingMultiple(hid->ptr, matcher);
+   IOHIDManagerRegisterDeviceMatchingCallback(hid->ptr,iohidmanager_hid_device_matched, 0);
+   IOHIDManagerRegisterDeviceRemovalCallback(hid->ptr,iohidmanager_hid_device_removed, 0);
+   
+   CFRelease(matcher);
 
-	/* register devices */
-	hid_list_t * ptr = devList;
-	while (ptr != NULL)
-	{
-		iohidmanager_hid_device_add_device(ptr->device, hid);
-		
-		//printf("%d\n",ptr->lid);
-		ptr = ptr->next;
-		free(devList);
-		devList = ptr;
-	}
-	free(device_array);
-
-
-	/* register call back to dynamically add device plugged when retroarch is
-	 * running
-	 * those will be added after the one plugged when retroarch was launched,
-	 * and by order they are plugged in (so not deterministic) */
-	CFMutableArrayRef matcher = CFArrayCreateMutable(kCFAllocatorDefault, 0,
-		&kCFTypeArrayCallBacks);
-
-	if (!matcher)
-		return -1;
-
-	iohidmanager_hid_append_matching_dictionary(matcher,
-		kHIDPage_GenericDesktop,
-		kHIDUsage_GD_Joystick);
-	iohidmanager_hid_append_matching_dictionary(matcher,
-		kHIDPage_GenericDesktop,
-		kHIDUsage_GD_GamePad);
-
-	IOHIDManagerSetDeviceMatchingMultiple(hid->ptr, matcher);
-	IOHIDManagerRegisterDeviceMatchingCallback(hid->ptr,
-		iohidmanager_hid_device_add, 0);
-
-	CFRelease(matcher);
 
    return 0;
 }
@@ -1021,11 +1099,37 @@ static void iohidmanager_hid_poll(void *data)
    (void)data;
 }
 
+static int32_t iohidmanager_set_report(void *handle, uint8_t report_type, uint8_t report_id, uint8_t *data_buf, size_t size)
+{
+   struct iohidmanager_hid_adapter *adapter =
+      (struct iohidmanager_hid_adapter*)handle;
+
+   if (adapter)
+      return IOHIDDeviceSetReport(adapter->handle, translate_hid_report_type(report_type), report_type, data_buf, size);
+
+   return -1;
+}
+
+static int32_t iohidmanager_get_report(void *handle, uint8_t report_type, uint8_t report_id, uint8_t *data_buf, size_t size)
+{
+   struct iohidmanager_hid_adapter *adapter =
+      (struct iohidmanager_hid_adapter*)handle;
+
+   if (adapter)
+   {
+      CFIndex length = size;
+      return IOHIDDeviceGetReport(adapter->handle, translate_hid_report_type(report_type), report_id, data_buf, &length);
+   }
+
+   return -1;
+}
+
 hid_driver_t iohidmanager_hid = {
    iohidmanager_hid_init,
    iohidmanager_hid_joypad_query,
    iohidmanager_hid_free,
    iohidmanager_hid_joypad_button,
+   iohidmanager_hid_joypad_state,
    iohidmanager_hid_joypad_get_buttons,
    iohidmanager_hid_joypad_axis,
    iohidmanager_hid_poll,
@@ -1033,4 +1137,9 @@ hid_driver_t iohidmanager_hid = {
    iohidmanager_hid_joypad_name,
    "iohidmanager",
    iohidmanager_hid_device_send_control,
+   iohidmanager_set_report,
+   iohidmanager_get_report,
+   NULL, /* set_idle */
+   NULL, /* set protocol */
+   NULL  /* read */
 };

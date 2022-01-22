@@ -32,7 +32,7 @@ static struct
       ALU(32, 123) KCACHE0(CB1, _0_15),
       ALU(155, 51),
       EXP_DONE(POS0,   _R7, _x, _y, _z, _w),
-      EXP_DONE(PARAM0, _R7, _x, _y, _z, _w) NO_BARRIER
+      (EXP_DONE(PARAM0, _R7, _x, _y, _z, _w) NO_BARRIER)
       END_OF_PROGRAM
       END_OF_PROGRAM
    },
@@ -331,7 +331,6 @@ static GX2UniformVar uniform_vars[] = {
     {"constants.time", GX2_SHADER_VAR_TYPE_FLOAT, 1, 0, 0},
 };
 
-
 GX2Shader ribbon_shader =
 {
    {
@@ -384,6 +383,6 @@ GX2Shader ribbon_shader =
       .program = (uint8_t*)&ps_program,
       .mode = GX2_SHADER_MODE_UNIFORM_BLOCK,
       .samplerVarCount = countof(samplers), samplers,
-   },   
+   },
    .attribute_stream = attribute_stream,
 };

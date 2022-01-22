@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2017 - Daniel De Matteis
+ *  Copyright (C) 2011-2021 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -14,37 +14,46 @@
  *  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <compat/strl.h>
-#include <compat/posix_string.h>
-#include <string/stdstring.h>
-
-#include <audio/audio_resampler.h>
+#include <stdint.h>
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
+#endif
+
+#include "core_info.h"
+#include "driver.h"
+#include "retroarch.h"
+#include "runloop.h"
+#include "verbosity.h"
+
+#ifdef HAVE_BLUETOOTH
+#include "bluetooth/bluetooth_driver.h"
+#endif
+#ifdef HAVE_NETWORKING
+#ifdef HAVE_WIFI
+#include "network/wifi_driver.h"
+#endif
+#endif
+#include "led/led_driver.h"
+#include "midi_driver.h"
+#include "gfx/video_driver.h"
+#include "gfx/video_display_server.h"
+#include "audio/audio_driver.h"
+#include "camera/camera_driver.h"
+#include "record/record_driver.h"
+#include "location_driver.h"
+
+#ifdef HAVE_GFX_WIDGETS
+#include "gfx/gfx_widgets.h"
 #endif
 
 #ifdef HAVE_MENU
 #include "menu/menu_driver.h"
 #endif
 
-#include "command.h"
-#include "dynamic.h"
-#include "msg_hash.h"
-
-#include "audio/audio_driver.h"
-#include "camera/camera_driver.h"
-#include "record/record_driver.h"
-#include "location/location_driver.h"
-#include "wifi/wifi_driver.h"
-#include "led/led_driver.h"
-#include "midi/midi_driver.h"
-#include "configuration.h"
-#include "core.h"
-#include "core_info.h"
-#include "driver.h"
-#include "retroarch.h"
-#include "verbosity.h"
+static void retro_frame_null(const void *data, unsigned width,
+      unsigned height, size_t pitch) { }
+void retro_input_poll_null(void) { }
 
 /**
  * find_driver_nonempty:
@@ -59,97 +68,146 @@
  * Returns: NULL if no driver based on @label found, otherwise
  * pointer to driver.
  **/
-static const void *find_driver_nonempty(const char *label, int i,
+static const void *find_driver_nonempty(
+      const char *label, int i,
       char *s, size_t len)
 {
-   const void *drv = NULL;
-
    if (string_is_equal(label, "camera_driver"))
    {
-      drv = camera_driver_find_handle(i);
-      if (drv)
-         strlcpy(s, camera_driver_find_ident(i), len);
+      if (camera_drivers[i])
+      {
+         const char *ident = camera_drivers[i]->ident;
+
+         strlcpy(s, ident, len);
+         return camera_drivers[i];
+      }
    }
    else if (string_is_equal(label, "location_driver"))
    {
-      drv = location_driver_find_handle(i);
-      if (drv)
-         strlcpy(s, location_driver_find_ident(i), len);
+      if (location_drivers[i])
+      {
+         const char *ident = location_drivers[i]->ident;
+
+         strlcpy(s, ident, len);
+         return location_drivers[i];
+      }
    }
 #ifdef HAVE_MENU
    else if (string_is_equal(label, "menu_driver"))
    {
-      drv = menu_driver_find_handle(i);
-      if (drv)
-         strlcpy(s, menu_driver_find_ident(i), len);
+      if (menu_ctx_drivers[i])
+      {
+         const char *ident = menu_ctx_drivers[i]->ident;
+
+         strlcpy(s, ident, len);
+         return menu_ctx_drivers[i];
+      }
    }
 #endif
    else if (string_is_equal(label, "input_driver"))
    {
-      drv = input_driver_find_handle(i);
-      if (drv)
-         strlcpy(s, input_driver_find_ident(i), len);
+      if (input_drivers[i])
+      {
+         const char *ident = input_drivers[i]->ident;
+
+         strlcpy(s, ident, len);
+         return input_drivers[i];
+      }
    }
    else if (string_is_equal(label, "input_joypad_driver"))
    {
-      drv = joypad_driver_find_handle(i);
-      if (drv)
-         strlcpy(s, joypad_driver_find_ident(i), len);
+      if (joypad_drivers[i])
+      {
+         const char *ident = joypad_drivers[i]->ident;
+
+         strlcpy(s, ident, len);
+         return joypad_drivers[i];
+      }
    }
    else if (string_is_equal(label, "video_driver"))
    {
-      drv = video_driver_find_handle(i);
-      if (drv)
-         strlcpy(s, video_driver_find_ident(i), len);
+      if (video_drivers[i])
+      {
+         const char *ident = video_drivers[i]->ident;
+
+         strlcpy(s, ident, len);
+         return video_drivers[i];
+      }
    }
    else if (string_is_equal(label, "audio_driver"))
    {
-      drv = audio_driver_find_handle(i);
-      if (drv)
-         strlcpy(s, audio_driver_find_ident(i), len);
+      if (audio_drivers[i])
+      {
+         const char *ident = audio_drivers[i]->ident;
+
+         strlcpy(s, ident, len);
+         return audio_drivers[i];
+      }
    }
    else if (string_is_equal(label, "record_driver"))
    {
-      drv = record_driver_find_handle(i);
-      if (drv)
-         strlcpy(s, record_driver_find_ident(i), len);
+      if (record_drivers[i])
+      {
+         const char *ident = record_drivers[i]->ident;
+
+         strlcpy(s, ident, len);
+         return record_drivers[i];
+      }
    }
    else if (string_is_equal(label, "midi_driver"))
    {
-      drv = midi_driver_find_handle(i);
-      if (drv)
-         strlcpy(s, midi_driver_find_ident(i), len);
+      if (midi_driver_find_handle(i))
+      {
+         const char *ident = midi_drivers[i]->ident;
+
+         strlcpy(s, ident, len);
+         return midi_drivers[i];
+      }
    }
    else if (string_is_equal(label, "audio_resampler_driver"))
    {
-      drv = audio_resampler_driver_find_handle(i);
-      if (drv)
-         strlcpy(s, audio_resampler_driver_find_ident(i), len);
+      if (audio_resampler_driver_find_handle(i))
+      {
+         const char *ident = audio_resampler_driver_find_ident(i);
+
+         strlcpy(s, ident, len);
+         return audio_resampler_driver_find_handle(i);
+      }
    }
+#ifdef HAVE_BLUETOOTH
+   else if (string_is_equal(label, "bluetooth_driver"))
+   {
+      if (bluetooth_drivers[i])
+      {
+         const char *ident = bluetooth_drivers[i]->ident;
+
+         strlcpy(s, ident, len);
+         return bluetooth_drivers[i];
+      }
+   }
+#endif
+#ifdef HAVE_WIFI
    else if (string_is_equal(label, "wifi_driver"))
    {
-      drv = wifi_driver_find_handle(i);
-      if (drv)
-         strlcpy(s, wifi_driver_find_ident(i), len);
-   }
+      if (wifi_drivers[i])
+      {
+         const char *ident = wifi_drivers[i]->ident;
 
-   return drv;
+         strlcpy(s, ident, len);
+         return wifi_drivers[i];
+      }
+   }
+#endif
+
+   return NULL;
 }
 
-/**
- * driver_find_index:
- * @label              : string of driver type to be found.
- * @drv                : identifier of driver to be found.
- *
- * Find index of the driver, based on @label.
- *
- * Returns: -1 if no driver based on @label and @drv found, otherwise
- * index number of the driver found in the array.
- **/
-static int driver_find_index(const char * label, const char *drv)
+
+
+int driver_find_index(const char *label, const char *drv)
 {
    unsigned i;
-   char str[256];
+   char str[NAME_MAX_LENGTH];
 
    str[0] = '\0';
 
@@ -165,12 +223,6 @@ static int driver_find_index(const char * label, const char *drv)
    return -1;
 }
 
-static bool driver_find_first(const char *label, char *s, size_t len)
-{
-   find_driver_nonempty(label, 0, s, len);
-   return true;
-}
-
 /**
  * driver_find_last:
  * @label              : string of driver type to be found.
@@ -179,20 +231,19 @@ static bool driver_find_first(const char *label, char *s, size_t len)
  *
  * Find last driver in driver array.
  **/
-static bool driver_find_last(const char *label, char *s, size_t len)
+static void driver_find_last(const char *label, char *s, size_t len)
 {
    unsigned i;
 
    for (i = 0;
-         find_driver_nonempty(label, i, s, len) != NULL; i++)
-   {}
+         find_driver_nonempty(label, i, s, len) != NULL; i++) { }
 
    if (i)
-      find_driver_nonempty(label, i-1, s, len);
+      i = i - 1;
    else
-      driver_find_first(label, s, len);
+      i = 0;
 
-   return true;
+   find_driver_nonempty(label, i, s, len);
 }
 
 /**
@@ -226,7 +277,7 @@ static bool driver_find_prev(const char *label, char *s, size_t len)
  *
  * Find next driver in driver array.
  **/
-bool driver_find_next(const char *label, char *s, size_t len)
+static bool driver_find_next(const char *label, char *s, size_t len)
 {
    int i = driver_find_index(label, s);
 
@@ -242,17 +293,76 @@ bool driver_find_next(const char *label, char *s, size_t len)
    return false;
 }
 
-static void driver_adjust_system_rates(void)
+static void driver_adjust_system_rates(
+      bool vrr_runloop_enable,
+      float video_refresh_rate,
+      float audio_max_timing_skew,
+      bool video_adaptive_vsync,
+      unsigned video_swap_interval)
 {
-   audio_driver_monitor_adjust_system_rates();
-   video_driver_monitor_adjust_system_rates();
+   runloop_state_t     *runloop_st        = runloop_state_get_ptr();
+   video_driver_state_t *video_st         = video_state_get_ptr();
+   struct retro_system_av_info *av_info   = &video_st->av_info;
+   const struct retro_system_timing *info =
+      (const struct retro_system_timing*)&av_info->timing;
+   double input_sample_rate               = info->sample_rate;
+   double input_fps                       = info->fps;
 
-   if (!video_driver_get_ptr(false))
-      return;
+   if (input_sample_rate > 0.0)
+   {
+      audio_driver_state_t *audio_st      = audio_state_get_ptr();
+      if (vrr_runloop_enable)
+         audio_st->input = input_sample_rate;
+      else
+         audio_st->input =
+            audio_driver_monitor_adjust_system_rates(
+                  input_sample_rate,
+                  input_fps,
+                  video_refresh_rate,
+                  video_swap_interval,
+                  audio_max_timing_skew);
 
-   if (rarch_ctl(RARCH_CTL_IS_NONBLOCK_FORCED, NULL))
-      command_event(CMD_EVENT_VIDEO_SET_NONBLOCKING_STATE, NULL);
-   else
+      RARCH_LOG("[Audio]: Set audio input rate to: %.2f Hz.\n",
+            audio_st->input);
+   }
+
+   runloop_st->force_nonblock       = false;
+
+   if (input_fps > 0.0)
+   {
+      float timing_skew_hz          = video_refresh_rate;
+
+      if (video_st->crt_switching_active)
+         timing_skew_hz             = input_fps;
+      video_st->core_hz             = input_fps;
+
+      if (!video_driver_monitor_adjust_system_rates(
+         timing_skew_hz,
+         video_refresh_rate,
+         vrr_runloop_enable,
+         audio_max_timing_skew,
+         input_fps))
+      {
+         /* We won't be able to do VSync reliably 
+            when game FPS > monitor FPS. */
+         runloop_st->force_nonblock = true;
+         RARCH_LOG("[Video]: Game FPS > Monitor FPS. Cannot rely on VSync.\n");
+
+         if (VIDEO_DRIVER_GET_PTR_INTERNAL(video_st))
+         {
+            if (video_st->current_video->set_nonblock_state)
+               video_st->current_video->set_nonblock_state(
+                     video_st->data, true,
+                     video_driver_test_all_flags(GFX_CTX_FLAGS_ADAPTIVE_VSYNC) &&
+                     video_adaptive_vsync,
+                     video_swap_interval
+                     );
+         }
+         return;
+      }
+   }
+
+   if (VIDEO_DRIVER_GET_PTR_INTERNAL(video_st))
       driver_set_nonblock_state();
 }
 
@@ -266,292 +376,533 @@ static void driver_adjust_system_rates(void)
  **/
 void driver_set_nonblock_state(void)
 {
-   bool                 enable = input_driver_is_nonblock_state();
+   runloop_state_t *runloop_st = runloop_state_get_ptr();
+   input_driver_state_t 
+      *input_st                = input_state_get_ptr();
+   audio_driver_state_t 
+      *audio_st                = audio_state_get_ptr();
+   video_driver_state_t 
+      *video_st                = video_state_get_ptr();
+   bool                 enable = input_st ?
+      input_st->nonblocking_flag : false;
+   settings_t       *settings  = config_get_ptr();
+   bool audio_sync             = settings->bools.audio_sync;
+   bool video_vsync            = settings->bools.video_vsync;
+   bool adaptive_vsync         = settings->bools.video_adaptive_vsync;
+   unsigned swap_interval      = settings->uints.video_swap_interval;
+   bool video_driver_active    = video_st->active;
+   bool audio_driver_active    = audio_st->active;
+   bool runloop_force_nonblock = runloop_st->force_nonblock;
 
    /* Only apply non-block-state for video if we're using vsync. */
-   if (video_driver_is_active() && video_driver_get_ptr(false))
+   if (video_driver_active && VIDEO_DRIVER_GET_PTR_INTERNAL(video_st))
    {
-      settings_t *settings = config_get_ptr();
-      bool video_nonblock  = enable;
-
-      if (     !settings->bools.video_vsync
-            || rarch_ctl(RARCH_CTL_IS_NONBLOCK_FORCED, NULL))
-         video_nonblock = true;
-      video_driver_set_nonblock_state(video_nonblock);
+      if (video_st->current_video->set_nonblock_state)
+      {
+         bool video_nonblock        = enable;
+         if (!video_vsync || runloop_force_nonblock)
+            video_nonblock = true;
+         video_st->current_video->set_nonblock_state(video_st->data,
+               video_nonblock,
+               video_driver_test_all_flags(GFX_CTX_FLAGS_ADAPTIVE_VSYNC) &&
+               adaptive_vsync, swap_interval);
+      }
    }
 
-   audio_driver_set_nonblocking_state(enable);
+   if (audio_driver_active && audio_st->context_audio_data)
+      audio_st->current_audio->set_nonblock_state(
+            audio_st->context_audio_data,
+            audio_sync ? enable : true);
+
+   audio_st->chunk_size = enable
+      ? audio_st->chunk_nonblock_size
+      : audio_st->chunk_block_size;
 }
 
-/**
- * driver_update_system_av_info:
- * @data               : pointer to new A/V info
- *
- * Update the system Audio/Video information.
- * Will reinitialize audio/video drivers.
- * Used by RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO.
- *
- * Returns: true (1) if successful, otherwise false (0).
- **/
-static bool driver_update_system_av_info(const struct retro_system_av_info *info)
+void drivers_init(
+      settings_t *settings,
+      int flags,
+      bool verbosity_enabled)
 {
-   struct retro_system_av_info *av_info    = video_viewport_get_system_av_info();
-   settings_t *settings = config_get_ptr();
+   runloop_state_t *runloop_st = runloop_state_get_ptr();
+   audio_driver_state_t 
+      *audio_st                = audio_state_get_ptr();
+   input_driver_state_t 
+      *input_st                = input_state_get_ptr();
+   video_driver_state_t 
+      *video_st                = video_state_get_ptr();
+#ifdef HAVE_MENU
+   struct menu_state *menu_st  = menu_state_get_ptr();
+#endif
+   camera_driver_state_t 
+      *camera_st               = camera_state_get_ptr();
+   location_driver_state_t 
+      *location_st             = location_state_get_ptr();
+   bool video_is_threaded      = VIDEO_DRIVER_IS_THREADED_INTERNAL(video_st);
+   gfx_display_t *p_disp       = disp_get_ptr();
+#if defined(HAVE_GFX_WIDGETS)
+   bool video_font_enable      = settings->bools.video_font_enable;
+   bool menu_enable_widgets    = settings->bools.menu_enable_widgets;
 
-   memcpy(av_info, info, sizeof(*av_info));
-   command_event(CMD_EVENT_REINIT, NULL);
-
-   /* Cannot continue recording with different parameters.
-    * Take the easiest route out and just restart the recording. */
-   if (recording_driver_get_data_ptr())
-   {
-      runloop_msg_queue_push(
-            msg_hash_to_str(MSG_RESTARTING_RECORDING_DUE_TO_DRIVER_REINIT),
-            2, 180, false);
-      command_event(CMD_EVENT_RECORD_DEINIT, NULL);
-      command_event(CMD_EVENT_RECORD_INIT, NULL);
-   }
-
-   /* Hide mouse cursor in fullscreen after 
-    * a RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO call. */
-   if (settings->bools.video_fullscreen)
-      video_driver_hide_mouse();
-
-   return true;
-}
-
-/**
- * drivers_init:
- * @flags              : Bitmask of drivers to initialize.
- *
- * Initializes drivers.
- * @flags determines which drivers get initialized.
- **/
-void drivers_init(int flags)
-{
-   bool video_is_threaded = false;
-
-   if (flags & DRIVER_VIDEO_MASK)
-      video_driver_unset_own_driver();
-   if (flags & DRIVER_AUDIO_MASK)
-      audio_driver_unset_own_driver();
-   if (flags & DRIVER_INPUT_MASK)
-      input_driver_unset_own_driver();
-   if (flags & DRIVER_CAMERA_MASK)
-      camera_driver_ctl(RARCH_CAMERA_CTL_UNSET_OWN_DRIVER, NULL);
-   if (flags & DRIVER_LOCATION_MASK)
-      location_driver_ctl(RARCH_LOCATION_CTL_UNSET_OWN_DRIVER, NULL);
-   if (flags & DRIVER_WIFI_MASK)
-      wifi_driver_ctl(RARCH_WIFI_CTL_UNSET_OWN_DRIVER, NULL);
+   /* By default, we want display widgets to persist through driver reinits. */
+   dispwidget_get_ptr()->persisting = true;
+#endif
 
 #ifdef HAVE_MENU
    /* By default, we want the menu to persist through driver reinits. */
-   menu_driver_ctl(RARCH_MENU_CTL_SET_OWN_DRIVER, NULL);
+   if (menu_st)
+      menu_st->data_own = true;
 #endif
 
    if (flags & (DRIVER_VIDEO_MASK | DRIVER_AUDIO_MASK))
-      driver_adjust_system_rates();
+      driver_adjust_system_rates(
+                                 settings->bools.vrr_runloop_enable,
+                                 settings->floats.video_refresh_rate,
+                                 settings->floats.audio_max_timing_skew,
+                                 settings->bools.video_adaptive_vsync,
+                                 settings->uints.video_swap_interval
+                                 );
 
+   /* Initialize video driver */
    if (flags & DRIVER_VIDEO_MASK)
    {
-      struct retro_hw_render_callback *hwr =
-         video_driver_get_hw_context();
+      struct retro_hw_render_callback *hwr   =
+         VIDEO_DRIVER_GET_HW_CONTEXT_INTERNAL(video_st);
 
-      video_driver_monitor_reset();
-      video_driver_init(&video_is_threaded);
+      video_st->frame_time_count = 0;
 
-      if (!video_driver_is_video_cache_context_ack()
+      video_driver_lock_new();
+#ifdef HAVE_VIDEO_FILTER
+      video_driver_filter_free();
+#endif
+      video_driver_set_cached_frame_ptr(NULL);
+      if (!video_driver_init_internal(&video_is_threaded,
+               verbosity_enabled))
+         retroarch_fail(1, "video_driver_init_internal()");
+
+      if (!video_st->cache_context_ack
             && hwr->context_reset)
          hwr->context_reset();
-      video_driver_unset_video_cache_context_ack();
-
-      rarch_ctl(RARCH_CTL_SET_FRAME_TIME_LAST, NULL);
+      video_st->cache_context_ack = false;
+      runloop_st->frame_time_last = 0;
    }
 
+   /* Initialize audio driver */
    if (flags & DRIVER_AUDIO_MASK)
    {
-      audio_driver_init();
-      audio_driver_new_devices_list();
+      audio_driver_init_internal(
+            settings,
+            audio_st->callback.callback != NULL);
+      if (  audio_st->current_audio &&
+            audio_st->current_audio->device_list_new &&
+            audio_st->context_audio_data)
+         audio_st->devices_list = (struct string_list*)
+            audio_st->current_audio->device_list_new(
+                  audio_st->context_audio_data);
    }
 
-   /* Only initialize camera driver if we're ever going to use it. */
-   if ((flags & DRIVER_CAMERA_MASK) && camera_driver_ctl(RARCH_CAMERA_CTL_IS_ACTIVE, NULL))
-      camera_driver_ctl(RARCH_CAMERA_CTL_INIT, NULL);
+   /* Regular display refresh rate startup autoswitch based on content av_info */
+   if (flags & (DRIVER_VIDEO_MASK | DRIVER_AUDIO_MASK))
+   {
+      struct retro_system_av_info *av_info = &video_st->av_info;
+      float refresh_rate                   = av_info->timing.fps;
 
-   /* Only initialize location driver if we're ever going to use it. */
-   if ((flags & DRIVER_LOCATION_MASK) && location_driver_ctl(RARCH_LOCATION_CTL_IS_ACTIVE, NULL))
-      init_location();
+      if (  refresh_rate > 0.0 &&
+            !settings->uints.crt_switch_resolution &&
+            !settings->bools.vrr_runloop_enable &&
+            !settings->bools.video_windowed_fullscreen &&
+            settings->bools.video_fullscreen &&
+            fabs(settings->floats.video_refresh_rate - refresh_rate) > 1)
+      {
+         bool video_switch_refresh_rate = false;
+
+         video_switch_refresh_rate_maybe(&refresh_rate, &video_switch_refresh_rate);
+
+         if (video_switch_refresh_rate && video_display_server_set_refresh_rate(refresh_rate))
+         {
+            int reinit_flags = DRIVER_AUDIO_MASK;
+            video_monitor_set_refresh_rate(refresh_rate);
+            /* Audio must reinit after successful rate switch */
+            command_event(CMD_EVENT_REINIT, &reinit_flags);
+         }
+      }
+   }
+
+   if (flags & DRIVER_CAMERA_MASK)
+   {
+      /* Only initialize camera driver if we're ever going to use it. */
+      if (camera_st->active)
+      {
+         /* Resource leaks will follow if camera is initialized twice. */
+         if (!camera_st->data)
+         {
+            if (!camera_driver_find_driver("camera driver",
+                     verbosity_enabled))
+               retroarch_fail(1, "find_camera_driver()");
+
+            if (camera_st->driver)
+            {
+               camera_st->data = camera_st->driver->init(
+                     *settings->arrays.camera_device ?
+                     settings->arrays.camera_device : NULL,
+                     camera_st->cb.caps,
+                     settings->uints.camera_width ?
+                     settings->uints.camera_width  : camera_st->cb.width,
+                     settings->uints.camera_height ?
+                     settings->uints.camera_height : camera_st->cb.height);
+
+               if (!camera_st->data)
+               {
+                  RARCH_ERR("Failed to initialize camera driver. Will continue without camera.\n");
+                  camera_st->active = false;
+               }
+
+               if (camera_st->cb.initialized)
+                  camera_st->cb.initialized();
+            }
+         }
+      }
+   }
+
+#ifdef HAVE_BLUETOOTH
+   if (flags & DRIVER_BLUETOOTH_MASK)
+      bluetooth_driver_ctl(RARCH_BLUETOOTH_CTL_INIT, NULL);
+#endif
+#ifdef HAVE_WIFI
+   if ((flags & DRIVER_WIFI_MASK))
+      wifi_driver_ctl(RARCH_WIFI_CTL_INIT, NULL);
+#endif
+
+   if (flags & DRIVER_LOCATION_MASK)
+   {
+      /* Only initialize location driver if we're ever going to use it. */
+      if (location_st->active)
+         if (!init_location(&runloop_state_get_ptr()->system,
+                  settings, verbosity_is_enabled()))
+            location_st->active = false;
+   }
 
    core_info_init_current_core();
 
+#if defined(HAVE_GFX_WIDGETS)
+   /* Note that we only enable widgets if 'video_font_enable'
+    * is true. 'video_font_enable' corresponds to the generic
+    * 'On-Screen Notifications' setting, which should serve as
+    * a global notifications on/off toggle switch */
+   if (video_font_enable &&
+       menu_enable_widgets &&
+       video_driver_has_widgets())
+   {
+      bool rarch_force_fullscreen = video_st->force_fullscreen;
+      bool video_is_fullscreen    = settings->bools.video_fullscreen ||
+            rarch_force_fullscreen;
+
+      dispwidget_get_ptr()->active= gfx_widgets_init(
+            p_disp,
+            anim_get_ptr(),
+            settings,
+            (uintptr_t)&dispwidget_get_ptr()->active,
+            video_is_threaded,
+            video_st->width,
+            video_st->height,
+            video_is_fullscreen,
+            settings->paths.directory_assets,
+            settings->paths.path_font);
+   }
+   else
+#endif
+   {
+      gfx_display_init_first_driver(p_disp, video_is_threaded);
+   }
+
 #ifdef HAVE_MENU
    if (flags & DRIVER_VIDEO_MASK)
    {
+      /* Initialize menu driver */
       if (flags & DRIVER_MENU_MASK)
-         menu_driver_init(video_is_threaded);
+      {
+         if (!menu_driver_init(video_is_threaded))
+             RARCH_ERR("Unable to init menu driver.\n");
+
+#ifdef HAVE_LIBRETRODB
+         menu_explore_context_init();
+#endif
+      }
    }
+
+   /* Initialising the menu driver will also initialise
+    * core info - if we are not initialising the menu
+    * driver, must initialise core info 'by hand' */
+   if (!(flags & DRIVER_VIDEO_MASK) ||
+       !(flags & DRIVER_MENU_MASK))
+   {
+      command_event(CMD_EVENT_CORE_INFO_INIT, NULL);
+      command_event(CMD_EVENT_LOAD_CORE_PERSIST, NULL);
+   }
+
+#else
+   /* Qt uses core info, even if the menu is disabled */
+   command_event(CMD_EVENT_CORE_INFO_INIT, NULL);
+   command_event(CMD_EVENT_LOAD_CORE_PERSIST, NULL);
 #endif
 
+   /* Keep non-throttled state as good as possible. */
    if (flags & (DRIVER_VIDEO_MASK | DRIVER_AUDIO_MASK))
-   {
-      /* Keep non-throttled state as good as possible. */
-      if (input_driver_is_nonblock_state())
+      if (input_st && input_st->nonblocking_flag)
          driver_set_nonblock_state();
-   }
 
+   /* Initialize LED driver */
    if (flags & DRIVER_LED_MASK)
-   {
-      led_driver_init();
-   }
+      led_driver_init(settings->arrays.led_driver);
 
+   /* Initialize MIDI  driver */
    if (flags & DRIVER_MIDI_MASK)
-      midi_driver_init();
+      midi_driver_init(settings);
+
+#ifndef HAVE_LAKKA_SWITCH
+#ifdef HAVE_LAKKA
+   cpu_scaling_driver_init();
+#endif
+#endif /* #ifndef HAVE_LAKKA_SWITCH */
 }
 
-
-/**
- * uninit_drivers:
- * @flags              : Bitmask of drivers to deinitialize.
- *
- * Deinitializes drivers.
- *
- *
- * @flags determines which drivers get deinitialized.
- **/
-
-/**
- * Driver ownership - set this to true if the platform in question needs to 'own'
- * the respective handle and therefore skip regular RetroArch
- * driver teardown/reiniting procedure.
- *
- * If  to true, the 'free' function will get skipped. It is
- * then up to the driver implementation to properly handle
- * 'reiniting' inside the 'init' function and make sure it
- * returns the existing handle instead of allocating and
- * returning a pointer to a new handle.
- *
- * Typically, if a driver intends to make use of this, it should
- * set this to true at the end of its 'init' function.
- **/
 void driver_uninit(int flags)
 {
+   runloop_state_t *runloop_st  = runloop_state_get_ptr();
+   video_driver_state_t 
+      *video_st                 = video_state_get_ptr();
+   camera_driver_state_t 
+      *camera_st                = camera_state_get_ptr();
+
    core_info_deinit_list();
    core_info_free_current_core();
 
-#ifdef HAVE_MENU
-   if (flags & DRIVER_MENU_MASK)
-      menu_driver_ctl(RARCH_MENU_CTL_DEINIT, NULL);
+#if defined(HAVE_GFX_WIDGETS)
+   /* This absolutely has to be done before video_driver_free_internal()
+    * is called/completes, otherwise certain menu drivers
+    * (e.g. Vulkan) will segfault */
+   if (dispwidget_get_ptr()->inited)
+   {
+      gfx_widgets_deinit(dispwidget_get_ptr()->persisting);
+      dispwidget_get_ptr()->active = false;
+   }
 #endif
 
-   if ((flags & DRIVER_LOCATION_MASK) && !location_driver_ctl(RARCH_LOCATION_CTL_OWNS_DRIVER, NULL))
-      location_driver_ctl(RARCH_LOCATION_CTL_DEINIT, NULL);
+#ifdef HAVE_MENU
+   if (flags & DRIVER_MENU_MASK)
+   {
+#ifdef HAVE_LIBRETRODB
+      menu_explore_context_deinit();
+#endif
 
-   if ((flags & DRIVER_CAMERA_MASK) && !camera_driver_ctl(RARCH_CAMERA_CTL_OWNS_DRIVER, NULL))
-      camera_driver_ctl(RARCH_CAMERA_CTL_DEINIT, NULL);
+      menu_driver_ctl(RARCH_MENU_CTL_DEINIT, NULL);
+   }
+#endif
 
-   if ((flags & DRIVER_WIFI_MASK) && !wifi_driver_ctl(RARCH_WIFI_CTL_OWNS_DRIVER, NULL))
+   if ((flags & DRIVER_LOCATION_MASK))
+      uninit_location(&runloop_st->system);
+
+   if ((flags & DRIVER_CAMERA_MASK))
+   {
+      if (camera_st->data && camera_st->driver)
+      {
+         if (camera_st->cb.deinitialized)
+            camera_st->cb.deinitialized();
+
+         if (camera_st->driver->free)
+            camera_st->driver->free(camera_st->data);
+      }
+
+      camera_st->data = NULL;
+   }
+
+#ifdef HAVE_BLUETOOTH
+   if ((flags & DRIVER_BLUETOOTH_MASK))
+      bluetooth_driver_ctl(RARCH_BLUETOOTH_CTL_DEINIT, NULL);
+#endif
+#ifdef HAVE_WIFI
+   if ((flags & DRIVER_WIFI_MASK))
       wifi_driver_ctl(RARCH_WIFI_CTL_DEINIT, NULL);
+#endif
 
    if (flags & DRIVER_LED)
       led_driver_free();
-   
+
    if (flags & DRIVERS_VIDEO_INPUT)
-      video_driver_free();
+   {
+      video_driver_free_internal();
+      VIDEO_DRIVER_LOCK_FREE(video_st);
+      video_st->data = NULL;
+      video_driver_set_cached_frame_ptr(NULL);
+   }
 
    if (flags & DRIVER_AUDIO_MASK)
       audio_driver_deinit();
 
-   if ((flags & DRIVER_VIDEO_MASK) && !video_driver_owns_driver())
-      video_driver_destroy_data();
+   if ((flags & DRIVER_VIDEO_MASK))
+      video_st->data = NULL;
 
-   if ((flags & DRIVER_INPUT_MASK) && !input_driver_owns_driver())
-      input_driver_destroy_data();
-   
-   if ((flags & DRIVER_AUDIO_MASK) && !audio_driver_owns_driver())
-      audio_driver_destroy_data();
+   if ((flags & DRIVER_INPUT_MASK))
+      input_state_get_ptr()->current_data = NULL;
+
+   if ((flags & DRIVER_AUDIO_MASK))
+      audio_state_get_ptr()->context_audio_data = NULL;
 
    if (flags & DRIVER_MIDI_MASK)
       midi_driver_free();
+
+#ifndef HAVE_LAKKA_SWITCH
+#ifdef HAVE_LAKKA
+   cpu_scaling_driver_free();
+#endif
+#endif /* #ifndef HAVE_LAKKA_SWITCH */
+}
+
+void retroarch_deinit_drivers(struct retro_callbacks *cbs)
+{
+   input_driver_state_t *input_st  = input_state_get_ptr();
+   video_driver_state_t *video_st  = video_state_get_ptr();
+   camera_driver_state_t *camera_st= camera_state_get_ptr();
+   location_driver_state_t 
+      *location_st                 = location_state_get_ptr();
+   runloop_state_t     *runloop_st = runloop_state_get_ptr();
+
+#if defined(HAVE_GFX_WIDGETS)
+   /* Tear down display widgets no matter what
+    * in case the handle is lost in the threaded
+    * video driver in the meantime
+    * (breaking video_driver_has_widgets) */
+   if (dispwidget_get_ptr()->inited)
+   {
+      gfx_widgets_deinit(
+            dispwidget_get_ptr()->persisting);
+      dispwidget_get_ptr()->active = false;
+   }
+#endif
+
+#if defined(HAVE_CRTSWITCHRES)
+   /* Switchres deinit */
+   if (video_st->crt_switching_active)
+   {
+#if defined(DEBUG)
+      RARCH_LOG("[CRT]: Getting video info\n");
+      RARCH_LOG("[CRT]: About to destroy SR\n");
+#endif
+      crt_destroy_modes(&video_st->crt_switch_st);
+   }
+#endif
+
+   /* Video */
+   video_display_server_destroy();
+
+   video_st->use_rgba                   = false;
+   video_st->hdr_support                = false;
+   video_st->active                     = false;
+   video_st->cache_context              = false;
+   video_st->cache_context_ack          = false;
+   video_st->record_gpu_buffer          = NULL;
+   video_st->current_video              = NULL;
+   video_driver_set_cached_frame_ptr(NULL);
+
+   /* Audio */
+   audio_state_get_ptr()->active                    = false;
+   audio_state_get_ptr()->current_audio             = NULL;
+
+   /* Input */
+   input_st->keyboard_linefeed_enable               = false;
+   input_st->block_hotkey                           = false;
+   input_st->block_libretro_input                   = false;
+
+   if (input_st)
+      input_st->nonblocking_flag                    = false;
+
+   memset(&input_st->turbo_btns, 0, sizeof(turbo_buttons_t));
+   memset(&input_st->analog_requested, 0,
+         sizeof(input_st->analog_requested));
+   input_st->current_driver                         = NULL;
+
+#ifdef HAVE_MENU
+   menu_driver_destroy(
+         menu_state_get_ptr());
+#endif
+   location_st->active                              = false;
+   destroy_location();
+
+   /* Camera */
+   camera_st->active                                = false;
+   camera_st->driver                                = NULL;
+   camera_st->data                                  = NULL;
+
+#ifdef HAVE_BLUETOOTH
+   bluetooth_driver_ctl(RARCH_BLUETOOTH_CTL_DESTROY, NULL);
+#endif
+#ifdef HAVE_WIFI
+   wifi_driver_ctl(RARCH_WIFI_CTL_DESTROY, NULL);
+#endif
+
+   cbs->frame_cb                                    = retro_frame_null;
+   cbs->poll_cb                                     = retro_input_poll_null;
+   cbs->sample_cb                                   = NULL;
+   cbs->sample_batch_cb                             = NULL;
+   cbs->state_cb                                    = NULL;
+
+   runloop_st->current_core.inited                  = false;
 }
 
 bool driver_ctl(enum driver_ctl_state state, void *data)
 {
+   driver_ctx_info_t      *drv = (driver_ctx_info_t*)data;
+
    switch (state)
    {
-      case RARCH_DRIVER_CTL_DEINIT:
-         video_driver_destroy();
-         audio_driver_destroy();
-         input_driver_destroy();
-#ifdef HAVE_MENU
-         menu_driver_destroy();
-#endif
-         location_driver_ctl(RARCH_LOCATION_CTL_DESTROY, NULL);
-         camera_driver_ctl(RARCH_CAMERA_CTL_DESTROY, NULL);
-         wifi_driver_ctl(RARCH_WIFI_CTL_DESTROY, NULL);
-         core_uninit_libretro_callbacks();
-         break;
-      case RARCH_DRIVER_CTL_INIT_PRE:
-         audio_driver_find_driver();
-         video_driver_find_driver();
-         input_driver_find_driver();
-         camera_driver_ctl(RARCH_CAMERA_CTL_FIND_DRIVER, NULL);
-         wifi_driver_ctl(RARCH_WIFI_CTL_FIND_DRIVER, NULL);
-         find_location_driver();
-#ifdef HAVE_MENU
-         menu_driver_ctl(RARCH_MENU_CTL_FIND_DRIVER, NULL);
-#endif
-         break;
       case RARCH_DRIVER_CTL_SET_REFRESH_RATE:
          {
-            float *hz = (float*)data;
+            float *hz                    = (float*)data;
+            audio_driver_state_t 
+               *audio_st                 = audio_state_get_ptr();
+            settings_t *settings         = config_get_ptr();
+            unsigned 
+               audio_output_sample_rate  = settings->uints.audio_output_sample_rate;
+            bool vrr_runloop_enable      = settings->bools.vrr_runloop_enable;
+            float video_refresh_rate     = settings->floats.video_refresh_rate;
+            float audio_max_timing_skew  = settings->floats.audio_max_timing_skew;
+            bool video_adaptive_vsync    = settings->bools.video_adaptive_vsync;
+            unsigned video_swap_interval = settings->uints.video_swap_interval;
+
             video_monitor_set_refresh_rate(*hz);
-            audio_driver_monitor_set_rate();
-            driver_adjust_system_rates();
+
+            /* Sets audio monitor rate to new value. */
+            audio_st->source_ratio_original   =
+            audio_st->source_ratio_current    = 
+            (double)audio_output_sample_rate / audio_st->input;
+
+            driver_adjust_system_rates(
+                                       vrr_runloop_enable,
+                                       video_refresh_rate,
+                                       audio_max_timing_skew,
+                                       video_adaptive_vsync,
+                                       video_swap_interval
+                                       );
          }
          break;
-      case RARCH_DRIVER_CTL_UPDATE_SYSTEM_AV_INFO:
-         {
-            const struct retro_system_av_info **info = (const struct retro_system_av_info**)data;
-            if (info)
-               return driver_update_system_av_info(*info);
-         }
-         return false;
       case RARCH_DRIVER_CTL_FIND_FIRST:
-         {
-            driver_ctx_info_t *drv = (driver_ctx_info_t*)data;
-            if (!drv)
-               return false;
-            return driver_find_first(drv->label, drv->s, drv->len);
-         }
-      case RARCH_DRIVER_CTL_FIND_LAST:
-         {
-            driver_ctx_info_t *drv = (driver_ctx_info_t*)data;
-            if (!drv)
-               return false;
-            return driver_find_last(drv->label, drv->s, drv->len);
-         }
-      case RARCH_DRIVER_CTL_FIND_PREV:
-         {
-            driver_ctx_info_t *drv = (driver_ctx_info_t*)data;
-            if (!drv)
-               return false;
-            return driver_find_prev(drv->label, drv->s, drv->len);
-         }
-      case RARCH_DRIVER_CTL_FIND_NEXT:
-         {
-            driver_ctx_info_t *drv = (driver_ctx_info_t*)data;
-            if (!drv)
-               return false;
-            return driver_find_next(drv->label, drv->s, drv->len);
-         }
-      case RARCH_DRIVER_CTL_FIND_INDEX:
-         {
-            driver_ctx_info_t *drv = (driver_ctx_info_t*)data;
-            if (!drv)
-               return false;
-            drv->len = driver_find_index(drv->label, drv->s);
-         }
+         if (!drv)
+            return false;
+         find_driver_nonempty(drv->label, 0, drv->s, drv->len);
          break;
+      case RARCH_DRIVER_CTL_FIND_LAST:
+         if (!drv)
+            return false;
+         driver_find_last(drv->label, drv->s, drv->len);
+         break;
+      case RARCH_DRIVER_CTL_FIND_PREV:
+         if (!drv)
+            return false;
+         return driver_find_prev(drv->label, drv->s, drv->len);
+      case RARCH_DRIVER_CTL_FIND_NEXT:
+         if (!drv)
+            return false;
+         return driver_find_next(drv->label, drv->s, drv->len);
       case RARCH_DRIVER_CTL_NONE:
       default:
          break;

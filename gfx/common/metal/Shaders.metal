@@ -1,18 +1,26 @@
-//
-//  Shaders.metal
-//  MetalRenderer
-//
-//  Created by Stuart Carnie on 5/31/18.
-//  Copyright © 2018 Stuart Carnie. All rights reserved.
-//
+/*  RetroArch - A frontend for libretro.
+ *  Copyright (C) 2018      - Stuart Carnie
+ *  copyright (c) 2011-2021 - Daniel De Matteis
+ *
+ *  RetroArch is free software: you can redistribute it and/or modify it under the terms
+ *  of the GNU General Public License as published by the Free Software Found-
+ *  ation, either version 3 of the License, or (at your option) any later version.
+ *
+ *  RetroArch is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ *  PURPOSE.  See the GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License along with RetroArch.
+ *  If not, see <http://www.gnu.org/licenses/>.
+ */
 
-// File for Metal kernel and shader functions
+/* File for Metal kernel and shader functions */
 
 #include <metal_stdlib>
 #include <simd/simd.h>
 
-// Including header shared between this Metal shader code and Swift/C code executing Metal API commands
-#import "ShaderTypes.h"
+/* Including header shared between this Metal shader code and Swift/C code executing Metal API commands */
+#import "metal_shader_types.h"
 
 using namespace metal;
 
@@ -81,38 +89,32 @@ fragment half4 stock_fragment_color(FontFragmentIn in [[ stage_in ]])
 
 #pragma mark - filter kernels
 
-kernel void convert_bgra4444_to_bgra8888(device uint16_t *              in  [[ buffer(0) ]],
-                                         texture2d<half, access::write> out [[ texture(0) ]],
-                                         uint                           id  [[ thread_position_in_grid ]])
+kernel void convert_bgra4444_to_bgra8888(texture2d<ushort, access::read> in  [[ texture(0) ]],
+                                         texture2d<half, access::write>  out [[ texture(1) ]],
+                                         uint2                           gid [[ thread_position_in_grid ]])
 {
-    uint16_t pix = in[id];
-    uchar4 pix2 = uchar4(
-                         extract_bits(pix,  4, 4),
-                         extract_bits(pix,  8, 4),
-                         extract_bits(pix, 12, 4),
-                         extract_bits(pix,  0, 4)
-                         );
+   ushort pix  = in.read(gid).r;
+   uchar4 pix2 = uchar4(
+                        extract_bits(pix,  4, 4),
+                        extract_bits(pix,  8, 4),
+                        extract_bits(pix, 12, 4),
+                        extract_bits(pix,  0, 4)
+                        );
 
-    uint ypos = id / out.get_width();
-    uint xpos = id % out.get_width();
-
-    out.write(half4(pix2) / 15.0, uint2(xpos, ypos));
+   out.write(half4(pix2) / 15.0, gid);
 }
 
-kernel void convert_rgb565_to_bgra8888(device uint16_t *                in  [[ buffer(0) ]],
-                                         texture2d<half, access::write> out [[ texture(0) ]],
-                                         uint                           id  [[ thread_position_in_grid ]])
+kernel void convert_rgb565_to_bgra8888(texture2d<ushort, access::read> in  [[ texture(0) ]],
+                                       texture2d<half, access::write>  out [[ texture(1) ]],
+                                       uint2                           gid [[ thread_position_in_grid ]])
 {
-    uint16_t pix = in[id];
-    uchar4 pix2 = uchar4(
-                         extract_bits(pix, 11, 5),
-                         extract_bits(pix,  5, 6),
-                         extract_bits(pix,  0, 5),
-                         0xf
-                         );
+   ushort pix  = in.read(gid).r;
+   uchar4 pix2 = uchar4(
+                        extract_bits(pix, 11, 5),
+                        extract_bits(pix,  5, 6),
+                        extract_bits(pix,  0, 5),
+                        0xf
+                        );
 
-    uint ypos = id / out.get_width();
-    uint xpos = id % out.get_width();
-
-    out.write(half4(pix2) / half4(0x1f, 0x3f, 0x1f, 0xf), uint2(xpos, ypos));
+   out.write(half4(pix2) / half4(0x1f, 0x3f, 0x1f, 0xf), gid);
 }

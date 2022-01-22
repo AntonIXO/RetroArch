@@ -5,6 +5,7 @@
  */
 var BrowserFS = BrowserFS;
 var afs;
+var initializationCount = 0;
 
 function cleanupStorage()
 {
@@ -42,7 +43,7 @@ function idbfsInit()
             afs = new BrowserFS.FileSystem.InMemory();
             console.log("WEBPLAYER: error: " + e + " falling back to in-memory filesystem");
             setupFileSystem("browser");
-            preLoadingComplete();
+            appInitialized();
          }
          else
          {
@@ -54,7 +55,7 @@ function idbfsInit()
                   afs = new BrowserFS.FileSystem.InMemory();
                   console.log("WEBPLAYER: error: " + e + " falling back to in-memory filesystem");
                   setupFileSystem("browser");
-                  preLoadingComplete();
+                  appInitialized();
                }
                else
                {
@@ -74,8 +75,19 @@ function idbfsSyncComplete()
    console.log("WEBPLAYER: idbfs setup successful");
 
    setupFileSystem("browser");
-   preLoadingComplete();
+   appInitialized();
 }
+
+function appInitialized()
+{
+     /* Need to wait for both the file system and the wasm runtime 
+        to complete before enabling the Run button. */
+     initializationCount++;
+     if (initializationCount == 2)
+     {
+         preLoadingComplete();
+     }
+ }
 
 function preLoadingComplete()
 {
@@ -96,10 +108,10 @@ function setupFileSystem(backend)
 
    /* create an XmlHttpRequest filesystem for the bundled data */
    var xfs1 =  new BrowserFS.FileSystem.XmlHttpRequest
-      (".index-xhr", "/assets/frontend/bundle/");
+      (".index-xhr", "assets/frontend/bundle/");
    /* create an XmlHttpRequest filesystem for core assets */
    var xfs2 =  new BrowserFS.FileSystem.XmlHttpRequest
-      (".index-xhr", "/assets/cores/");
+      (".index-xhr", "assets/cores/");
 
    console.log("WEBPLAYER: initializing filesystem: " + backend);
    mfs.mount('/home/web_user/retroarch/userdata', afs);
@@ -116,7 +128,7 @@ function setupFileSystem(backend)
  * Retrieve the value of the given GET parameter.
  */
 function getParam(name) {
-  var results = new RegExp('[\?&]' + name + '=([^&#]*)').exec(window.location.href);
+  var results = new RegExp('[?&]' + name + '=([^&#]*)').exec(window.location.href);
   if (results) {
     return results[1] || null;
   }
@@ -139,6 +151,7 @@ function startRetroArch()
    document.getElementById("btnFullscreen").disabled = false;
 
    Module['callMain'](Module['arguments']);
+   Module['resumeMainLoop']();
    document.getElementById('canvas').focus();
 }
 
@@ -149,7 +162,7 @@ function selectFiles(files)
    $('#icnAdd').addClass('fa-spinner spinning');
    var count = files.length;
 
-   for (var i = 0; i < files.length; i++)
+   for (var i = 0; i < count; i++)
    {
       filereader = new FileReader();
       filereader.file_name = files[i].name;
@@ -184,6 +197,10 @@ var Module =
   arguments: ["-v", "--menu"],
   preRun: [],
   postRun: [],
+  onRuntimeInitialized: function()
+  {
+     appInitialized();
+  }, 
   print: function(text)
   {
      console.log(text);

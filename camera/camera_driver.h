@@ -1,6 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2017 - Daniel De Matteis
+ *  Copyright (C) 2011-2021 - Daniel De Matteis
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -14,34 +14,19 @@
  *  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __CAMERA_DRIVER__H
-#define __CAMERA_DRIVER__H
+#ifndef _CAMERA_DRIVER_H
+#define _CAMERA_DRIVER_H
 
 #include <stdint.h>
 
 #include <boolean.h>
 #include <retro_common_api.h>
-#include <libretro.h>
+
+#ifdef HAVE_CONFIG_H
+#include "../config.h"
+#endif /* HAVE_CONFIG_H */
 
 RETRO_BEGIN_DECLS
-
-enum rarch_camera_ctl_state
-{
-   RARCH_CAMERA_CTL_NONE = 0,
-   RARCH_CAMERA_CTL_DESTROY,
-   RARCH_CAMERA_CTL_DEINIT,
-   RARCH_CAMERA_CTL_SET_OWN_DRIVER,
-   RARCH_CAMERA_CTL_UNSET_OWN_DRIVER,
-   RARCH_CAMERA_CTL_OWNS_DRIVER,
-   RARCH_CAMERA_CTL_SET_ACTIVE,
-   RARCH_CAMERA_CTL_UNSET_ACTIVE,
-   RARCH_CAMERA_CTL_IS_ACTIVE,
-   RARCH_CAMERA_CTL_FIND_DRIVER,
-   RARCH_CAMERA_CTL_SET_CB,
-   RARCH_CAMERA_CTL_STOP,
-   RARCH_CAMERA_CTL_START,
-   RARCH_CAMERA_CTL_INIT
-};
 
 typedef struct camera_driver
 {
@@ -65,11 +50,21 @@ typedef struct camera_driver
    const char *ident;
 } camera_driver_t;
 
+typedef struct
+{
+   struct retro_camera_callback cb;    /* uint64_t alignment */
+   const camera_driver_t *driver;
+   void *data;
+   bool active;
+} camera_driver_state_t;
+
+extern const camera_driver_t *camera_drivers[];
+
+
 extern camera_driver_t camera_v4l2;
 extern camera_driver_t camera_android;
 extern camera_driver_t camera_rwebcam;
 extern camera_driver_t camera_avfoundation;
-extern camera_driver_t camera_null;
 
 /**
  * config_get_camera_driver_options:
@@ -82,31 +77,14 @@ extern camera_driver_t camera_null;
  **/
 const char* config_get_camera_driver_options(void);
 
-/**
- * camera_driver_find_handle:
- * @index              : index of driver to get handle to.
- *
- * Returns: handle to camera driver at index. Can be NULL
- * if nothing found.
- **/
-const void *camera_driver_find_handle(int index);
-
-/**
- * camera_driver_find_ident:
- * @index              : index of driver to get handle to.
- *
- * Returns: Human-readable identifier of camera driver at index. Can be NULL
- * if nothing found.
- **/
-const char *camera_driver_find_ident(int index);
+bool driver_camera_start(void);
 
 void driver_camera_stop(void);
 
-bool driver_camera_start(void);
+bool camera_driver_find_driver(const char *prefix,
+      bool verbosity_enabled);
 
-void camera_driver_poll(void);
-
-bool camera_driver_ctl(enum rarch_camera_ctl_state state, void *data);
+camera_driver_state_t *camera_state_get_ptr(void);
 
 RETRO_END_DECLS
 

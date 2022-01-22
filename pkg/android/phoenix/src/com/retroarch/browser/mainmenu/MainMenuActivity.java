@@ -2,12 +2,12 @@ package com.retroarch.browser.mainmenu;
 
 import com.retroarch.browser.preferences.util.UserPreferences;
 import com.retroarch.browser.retroactivity.RetroActivityFuture;
-import com.retroarch.browser.retroactivity.RetroActivityPast;
 
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.pm.ApplicationInfo;
 import android.media.AudioManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -22,6 +22,7 @@ import android.Manifest;
 import android.content.DialogInterface;
 import android.app.AlertDialog;
 import android.util.Log;
+import android.widget.Toast;
 
 /**
  * {@link PreferenceActivity} subclass that provides all of the
@@ -30,7 +31,9 @@ import android.util.Log;
 public final class MainMenuActivity extends PreferenceActivity
 {
 	final private int REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS = 124;
+	public static String PACKAGE_NAME;
 	boolean checkPermissions = false;
+	boolean checkManageExternalStoragePermission = false;
 
 	public void showMessageOKCancel(String message, DialogInterface.OnClickListener onClickListener)
 	{
@@ -41,13 +44,16 @@ public final class MainMenuActivity extends PreferenceActivity
 
 	private boolean addPermission(List<String> permissionsList, String permission)
 	{
-		if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED)
+		if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M)
 		{
-			permissionsList.add(permission);
+			if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED)
+			{
+				permissionsList.add(permission);
 
-			// Check for Rationale Option
-			if (!shouldShowRequestPermissionRationale(permission))
-				return false;
+				// Check for Rationale Option
+				if (!shouldShowRequestPermissionRationale(permission))
+					return false;
+			}
 		}
 
 		return true;
@@ -55,18 +61,31 @@ public final class MainMenuActivity extends PreferenceActivity
 
 	public void checkRuntimePermissions()
 	{
-		if (android.os.Build.VERSION.SDK_INT >= 23)
+		if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M)
 		{
 			// Android 6.0+ needs runtime permission checks
 			List<String> permissionsNeeded = new ArrayList<String>();
 			final List<String> permissionsList = new ArrayList<String>();
 
-			if (!addPermission(permissionsList, Manifest.permission.READ_EXTERNAL_STORAGE))
-				permissionsNeeded.add("Read External Storage");
-			if (!addPermission(permissionsList, Manifest.permission.WRITE_EXTERNAL_STORAGE))
-				permissionsNeeded.add("Write External Storage");
+			final boolean requiresManageExternalStoragePermission =
+					getApplicationInfo().targetSdkVersion > Build.VERSION_CODES.Q
+							&& Build.VERSION.SDK_INT > Build.VERSION_CODES.Q;
 
-			if (permissionsList.size() > 0)
+			boolean shouldRequestManageExternalStoragePermission = false;
+
+			if (requiresManageExternalStoragePermission) {
+				if (!Environment.isExternalStorageManager()) {
+					shouldRequestManageExternalStoragePermission = true;
+					permissionsNeeded.add("Manage External Storage");
+				}
+			} else {
+				if (!addPermission(permissionsList, Manifest.permission.READ_EXTERNAL_STORAGE))
+					permissionsNeeded.add("Read External Storage");
+				if (!addPermission(permissionsList, Manifest.permission.WRITE_EXTERNAL_STORAGE))
+					permissionsNeeded.add("Write External Storage");
+			}
+
+			if (permissionsList.size() > 0 || shouldRequestManageExternalStoragePermission)
 			{
 				checkPermissions = true;
 
@@ -88,10 +107,29 @@ public final class MainMenuActivity extends PreferenceActivity
 							{
 								if (which == AlertDialog.BUTTON_POSITIVE)
 								{
-									requestPermissions(permissionsList.toArray(new String[permissionsList.size()]),
-										REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS);
+									if (requiresManageExternalStoragePermission) {
+										checkManageExternalStoragePermission = true;
 
-									Log.i("MainMenuActivity", "User accepted request for external storage permissions.");
+										Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+										intent.setData(Uri.fromParts("package", getPackageName(), null));
+
+										try {
+											startActivity(intent);
+										} catch (ActivityNotFoundException e) {
+											// Redirect to app info page instead, so that the user can manually grant the permission
+											String text = "Navigate to Permissions -> Files and media -> Allow all the time";
+											Toast.makeText(MainMenuActivity.this, text, Toast.LENGTH_LONG).show();
+
+											intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+											intent.setData(Uri.fromParts("package", getPackageName(), null));
+											startActivity(intent);
+										}
+									} else {
+										requestPermissions(permissionsList.toArray(new String[permissionsList.size()]),
+												REQUEST_CODE_ASK_MULTIPLE_PERMISSIONS);
+
+										Log.i("MainMenuActivity", "User accepted request for external storage permissions.");
+									}
 								}
 							}
 						});
@@ -115,16 +153,7 @@ public final class MainMenuActivity extends PreferenceActivity
 	public void finalStartup()
 	{
 		final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-		Intent retro;
-
-		if ((Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB))
-		{
-			retro = new Intent(this, RetroActivityFuture.class);
-		}
-		else
-		{
-			retro = new Intent(this, RetroActivityPast.class);
-		}
+		Intent retro = new Intent(this, RetroActivityFuture.class);
 
 		retro.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
@@ -179,9 +208,7 @@ public final class MainMenuActivity extends PreferenceActivity
 		retro.putExtra("DATADIR", dataDirPath);
 		retro.putExtra("APK", dataSourcePath);
 		retro.putExtra("SDCARD", Environment.getExternalStorageDirectory().getAbsolutePath());
-		retro.putExtra("DOWNLOADS", Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getAbsolutePath());
-		retro.putExtra("SCREENSHOTS", Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).getAbsolutePath());
-		String external = Environment.getExternalStorageDirectory().getAbsolutePath() + "/Android/data/com.retroarch/files";
+		String external = Environment.getExternalStorageDirectory().getAbsolutePath() + "/Android/data/" + PACKAGE_NAME + "/files";
 		retro.putExtra("EXTERNAL", external);
 	}
 
@@ -190,11 +217,22 @@ public final class MainMenuActivity extends PreferenceActivity
 	{
 		super.onCreate(savedInstanceState);
 
+		PACKAGE_NAME = getPackageName();
+
 		// Bind audio stream to hardware controls.
 		setVolumeControlStream(AudioManager.STREAM_MUSIC);
 
 		UserPreferences.updateConfigFile(this);
 
 		checkRuntimePermissions();
+	}
+
+	@Override
+	public void onTopResumedActivityChanged(boolean onTop) {
+		if(onTop && checkManageExternalStoragePermission) {
+			checkPermissions = false;
+			checkManageExternalStoragePermission = false;
+			checkRuntimePermissions();
+		}
 	}
 }

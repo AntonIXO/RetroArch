@@ -17,11 +17,15 @@
 
 #include <retro_inline.h>
 
+#include <lists/string_list.h>
+
 #include "dxgi_common.h"
 #ifdef CINTERFACE
 #define D3D11_NO_HELPERS
 #endif
 #include <d3d11.h>
+
+#define D3D11_MAX_GPU_COUNT 16
 
 typedef const ID3D11ShaderResourceView* D3D11ShaderResourceViewRef;
 typedef const ID3D11SamplerState*       D3D11SamplerStateRef;
@@ -70,7 +74,9 @@ typedef ID3D11VideoProcessorOutputView* D3D11VideoProcessorOutputView;
 typedef ID3D11VideoContext*             D3D11VideoContext;
 typedef ID3D11VideoDevice*              D3D11VideoDevice;
 typedef ID3D11Device*                   D3D11Device;
+#ifdef DEBUG
 typedef ID3D11Debug*                    D3D11Debug;
+#endif
 typedef ID3D11SwitchToRef*              D3D11SwitchToRef;
 typedef ID3D11TracingDevice*            D3D11TracingDevice;
 typedef ID3D11InfoQueue*                D3D11InfoQueue;
@@ -119,6 +125,10 @@ static INLINE UINT D3D11GetTexture3DEvictionPriority(D3D11Texture3D texture3d)
 {
    return texture3d->lpVtbl->GetEvictionPriority(texture3d);
 }
+static INLINE void D3D11GetTexture2DDesc(D3D11Texture2D texture2d, D3D11_TEXTURE2D_DESC* desc)
+{
+    texture2d->lpVtbl->GetDesc(texture2d, desc);
+}
 static INLINE void D3D11GetViewResource(D3D11View view, D3D11Resource* resource)
 {
    view->lpVtbl->GetResource(view, resource);
@@ -127,6 +137,16 @@ static INLINE void D3D11GetShaderResourceViewResource(
       D3D11ShaderResourceView shader_resource_view, D3D11Resource* resource)
 {
    shader_resource_view->lpVtbl->GetResource(shader_resource_view, resource);
+}
+static INLINE void D3D11GetShaderResourceViewTexture2D(
+    D3D11ShaderResourceView shader_resource_view, D3D11Texture2D* texture2d)
+{
+    shader_resource_view->lpVtbl->GetResource(shader_resource_view, (D3D11Resource*)texture2d);
+}
+static INLINE void D3D11GetShaderResourceViewDesc(
+    D3D11ShaderResourceView shader_resource_view, D3D11_SHADER_RESOURCE_VIEW_DESC* desc)
+{
+    shader_resource_view->lpVtbl->GetDesc(shader_resource_view, desc);
 }
 static INLINE void
 D3D11GetRenderTargetViewResource(D3D11RenderTargetView render_target_view, D3D11Resource* resource)
@@ -493,7 +513,7 @@ static INLINE void D3D11DispatchIndirect(
          device_context, buffer_for_args, aligned_byte_offset_for_args);
 }
 static INLINE void
-D3D11SetState(D3D11DeviceContext device_context, D3D11RasterizerState rasterizer_state)
+D3D11SetRasterizerState(D3D11DeviceContext device_context, D3D11RasterizerState rasterizer_state)
 {
    device_context->lpVtbl->RSSetState(device_context, rasterizer_state);
 }
@@ -2123,6 +2143,8 @@ static INLINE UINT D3D11GetExceptionMode(D3D11Device device)
 {
    return device->lpVtbl->GetExceptionMode(device);
 }
+
+#ifdef DEBUG
 static INLINE HRESULT D3D11SetDebugFeatureMask(D3D11Debug debug, UINT mask)
 {
    return debug->lpVtbl->SetFeatureMask(debug, mask);
@@ -2159,6 +2181,9 @@ static INLINE HRESULT D3D11ValidateContextForDispatch(D3D11Debug debug, D3D11Dev
 {
    return debug->lpVtbl->ValidateContextForDispatch(debug, context);
 }
+#endif
+
+#ifndef __WINRT__
 static INLINE BOOL D3D11SetUseRef(D3D11SwitchToRef switch_to_ref, BOOL use_ref)
 {
    return switch_to_ref->lpVtbl->SetUseRef(switch_to_ref, use_ref);
@@ -2167,6 +2192,7 @@ static INLINE BOOL D3D11GetUseRef(D3D11SwitchToRef switch_to_ref)
 {
    return switch_to_ref->lpVtbl->GetUseRef(switch_to_ref);
 }
+#endif
 static INLINE HRESULT D3D11SetShaderTrackingOptionsByType(
       D3D11TracingDevice tracing_device, UINT resource_type_flags, UINT options)
 {
@@ -2188,6 +2214,7 @@ static INLINE void D3D11ClearStoredMessages(D3D11InfoQueue info_queue)
 {
    info_queue->lpVtbl->ClearStoredMessages(info_queue);
 }
+#ifndef __WINRT__
 static INLINE HRESULT D3D11GetMessageA(
       D3D11InfoQueue info_queue,
       UINT64         message_index,
@@ -2196,6 +2223,7 @@ static INLINE HRESULT D3D11GetMessageA(
 {
    return info_queue->lpVtbl->GetMessageA(info_queue, message_index, message, message_byte_length);
 }
+#endif
 static INLINE UINT64 D3D11GetNumMessagesAllowedByStorageFilter(D3D11InfoQueue info_queue)
 {
    return info_queue->lpVtbl->GetNumMessagesAllowedByStorageFilter(info_queue);
@@ -2332,6 +2360,7 @@ static INLINE BOOL D3D11GetBreakOnID(D3D11InfoQueue info_queue, D3D11_MESSAGE_ID
 {
    return info_queue->lpVtbl->GetBreakOnID(info_queue, id);
 }
+#ifdef DEBUG
 static INLINE void D3D11SetMuteDebugOutput(D3D11InfoQueue info_queue, BOOL mute)
 {
    info_queue->lpVtbl->SetMuteDebugOutput(info_queue, mute);
@@ -2340,6 +2369,7 @@ static INLINE BOOL D3D11GetMuteDebugOutput(D3D11InfoQueue info_queue)
 {
    return info_queue->lpVtbl->GetMuteDebugOutput(info_queue);
 }
+#endif
 
 /* end of auto-generated */
 
@@ -2422,7 +2452,7 @@ D3D11UnmapBuffer(D3D11DeviceContext device_context, D3D11Buffer buffer, UINT sub
 #include <retro_math.h>
 #include <gfx/math/matrix_4x4.h>
 #include <libretro_d3d.h>
-#include "../video_driver.h"
+#include "../../retroarch.h"
 #include "../drivers_shader/slang_process.h"
 
 typedef struct d3d11_vertex_t
@@ -2445,6 +2475,7 @@ typedef struct
 
 typedef struct
 {
+   UINT32 colors[4];
    struct
    {
       float x, y, w, h;
@@ -2453,7 +2484,6 @@ typedef struct
    {
       float u, v, w, h;
    } coords;
-   UINT32 colors[4];
    struct
    {
       float scaling;
@@ -2480,9 +2510,6 @@ typedef struct ALIGN(16)
    float time;
 } d3d11_uniform_t;
 
-static_assert(
-      (!(sizeof(d3d11_uniform_t) & 0xF)), "sizeof(d3d11_uniform_t) must be a multiple of 16");
-
 typedef struct d3d11_shader_t
 {
    D3D11VertexShader   vs;
@@ -2498,10 +2525,13 @@ typedef struct
    D3D11Device           device;
    D3D_FEATURE_LEVEL     supportedFeatureLevel;
    D3D11DeviceContext    context;
-   D3D11RasterizerState  state;
-   D3D11RenderTargetView renderTargetView;
+   D3D11RasterizerState  scissor_enabled;
+   D3D11RasterizerState  scissor_disabled;
    D3D11Buffer           ubo;
    d3d11_uniform_t       ubo_values;
+#ifdef HAVE_DXGI_HDR
+   d3d11_texture_t       back_buffer;
+#endif
    D3D11SamplerState     samplers[RARCH_FILTER_MAX][RARCH_WRAP_MAX];
    D3D11BlendState       blend_enable;
    D3D11BlendState       blend_disable;
@@ -2510,21 +2540,51 @@ typedef struct
    math_matrix_4x4       mvp, mvp_no_rot;
    struct video_viewport vp;
    D3D11_VIEWPORT        viewport;
+   D3D11_RECT            scissor;
    DXGI_FORMAT           format;
    float                 clearcolor[4];
+   unsigned              swap_interval;
    bool                  vsync;
    bool                  resize_chain;
    bool                  keep_aspect;
    bool                  resize_viewport;
    bool                  resize_render_targets;
    bool                  init_history;
+   bool                  has_flip_model;
+   bool                  has_allow_tearing;
    d3d11_shader_t        shaders[GFX_MAX_SHADERS];
+#ifdef HAVE_DXGI_HDR
+   enum dxgi_swapchain_bit_depth 
+                         chain_bit_depth;
+   DXGI_COLOR_SPACE_TYPE chain_color_space;
+   DXGI_FORMAT           chain_formats[DXGI_SWAPCHAIN_BIT_DEPTH_COUNT];
+#endif
+#ifdef __WINRT__
+   DXGIFactory2 factory;
+#else
+   DXGIFactory factory;
+#endif
+   DXGIAdapter adapter;
 
 	struct
    {
       bool enable;
       struct retro_hw_render_interface_d3d11 iface;
    } hw;
+
+#ifdef HAVE_DXGI_HDR
+   struct
+   {
+      dxgi_hdr_uniform_t               ubo_values;
+      D3D11Buffer                      ubo;
+      float                            max_output_nits;
+      float                            min_output_nits;
+      float                            max_cll;
+      float                            max_fall;
+      bool                             support;
+      bool                             enable;
+   } hdr;
+#endif
 
 	struct
    {
@@ -2574,9 +2634,13 @@ typedef struct
       D3D11_VIEWPORT             viewport;
       pass_semantics_t           semantics;
       uint32_t                   frame_count;
+      int32_t                    frame_direction;
    } pass[GFX_MAX_SHADERS];
 
    struct video_shader* shader_preset;
+   struct string_list *gpu_list;
+   IDXGIAdapter1 *current_adapter;
+   IDXGIAdapter1 *adapters[D3D11_MAX_GPU_COUNT];
    d3d11_texture_t      luts[GFX_MAX_TEXTURES];
 } d3d11_video_t;
 
@@ -2601,6 +2665,22 @@ void d3d11_update_texture(
 DXGI_FORMAT d3d11_get_closest_match(
       D3D11Device device, DXGI_FORMAT desired_format, UINT desired_format_support);
 
+enum d3d11_feature_level_hint
+{
+   D3D11_FEATURE_LEVEL_HINT_DONTCARE,
+   D3D11_FEATURE_LEVEL_HINT_1_0_CORE,
+   D3D11_FEATURE_LEVEL_HINT_9_1,
+   D3D11_FEATURE_LEVEL_HINT_9_2,
+   D3D11_FEATURE_LEVEL_HINT_9_3,
+   D3D11_FEATURE_LEVEL_HINT_10_0,
+   D3D11_FEATURE_LEVEL_HINT_10_1,
+   D3D11_FEATURE_LEVEL_HINT_11_0,
+   D3D11_FEATURE_LEVEL_HINT_11_1,
+   D3D11_FEATURE_LEVEL_HINT_12_0,
+   D3D11_FEATURE_LEVEL_HINT_12_1,
+   D3D11_FEATURE_LEVEL_HINT_12_2
+};
+
 bool d3d11_init_shader(
       D3D11Device                     device,
       const char*                     src,
@@ -2611,7 +2691,8 @@ bool d3d11_init_shader(
       LPCSTR                          gs_entry,
       const D3D11_INPUT_ELEMENT_DESC* input_element_descs,
       UINT                            num_elements,
-      d3d11_shader_t*                 out);
+      d3d11_shader_t*                 out,
+      enum d3d11_feature_level_hint   hint);
 
 static INLINE void d3d11_release_shader(d3d11_shader_t* shader)
 {

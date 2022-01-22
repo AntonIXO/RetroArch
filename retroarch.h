@@ -1,6 +1,7 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2010-2014 - Hans-Kristian Arntzen
- *  Copyright (C) 2011-2016 - Daniel De Matteis
+ *  Copyright (C) 2011-2021 - Daniel De Matteis
+ *  Copyright (C) 2016-2019 - Brad Parker
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -19,277 +20,72 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <sys/types.h>
 #include <stdlib.h>
 
-#include <retro_common_api.h>
 #include <boolean.h>
+#include <retro_inline.h>
+#include <retro_common_api.h>
 
-#include "core_type.h"
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+#include <lists/string_list.h>
+#include <queues/task_queue.h>
+#include <queues/message_queue.h>
+#include "gfx/video_driver.h"
+
 #include "core.h"
 
-#ifdef HAVE_MENU
-#include "menu/menu_input.h"
-#endif
+#include "runloop.h"
+#include "retroarch_types.h"
 
 RETRO_BEGIN_DECLS
 
-enum rarch_ctl_state
-{
-   RARCH_CTL_NONE = 0,
+#define RETRO_ENVIRONMENT_RETROARCH_START_BLOCK 0x800000
 
-   /* Initialize all drivers. */
-   RARCH_CTL_INIT,
+#define RETRO_ENVIRONMENT_SET_SAVE_STATE_IN_BACKGROUND (2 | RETRO_ENVIRONMENT_RETROARCH_START_BLOCK)
+                                            /* bool * --
+                                            * Boolean value that tells the front end to save states in the
+                                            * background or not.
+                                            */
 
-   /* Deinitializes RetroArch. */
-   RARCH_CTL_MAIN_DEINIT,
+#define RETRO_ENVIRONMENT_GET_CLEAR_ALL_THREAD_WAITS_CB (3 | RETRO_ENVIRONMENT_RETROARCH_START_BLOCK)
+                                            /* retro_environment_t * --
+                                            * Provides the callback to the frontend method which will cancel
+                                            * all currently waiting threads.  Used when coordination is needed
+                                            * between the core and the frontend to gracefully stop all threads.
+                                            */
 
-   RARCH_CTL_IS_INITED,
+#define RETRO_ENVIRONMENT_POLL_TYPE_OVERRIDE (4 | RETRO_ENVIRONMENT_RETROARCH_START_BLOCK)
+                                            /* unsigned * --
+                                            * Tells the frontend to override the poll type behavior. 
+                                            * Allows the frontend to influence the polling behavior of the
+                                            * frontend.
+                                            *
+                                            * Will be unset when retro_unload_game is called.
+                                            *
+                                            * 0 - Don't Care, no changes, frontend still determines polling type behavior.
+                                            * 1 - Early
+                                            * 2 - Normal
+                                            * 3 - Late
+                                            */
 
-   RARCH_CTL_IS_DUMMY_CORE,
+#define DRIVERS_CMD_ALL \
+      ( DRIVER_AUDIO_MASK \
+      | DRIVER_VIDEO_MASK \
+      | DRIVER_INPUT_MASK \
+      | DRIVER_CAMERA_MASK \
+      | DRIVER_LOCATION_MASK \
+      | DRIVER_MENU_MASK \
+      | DRIVERS_VIDEO_INPUT_MASK \
+      | DRIVER_BLUETOOTH_MASK \
+      | DRIVER_WIFI_MASK \
+      | DRIVER_LED_MASK \
+      | DRIVER_MIDI_MASK )
 
-   RARCH_CTL_PREINIT,
-
-   RARCH_CTL_DESTROY,
-
-   RARCH_CTL_IS_BPS_PREF,
-   RARCH_CTL_UNSET_BPS_PREF,
-
-   RARCH_CTL_IS_PATCH_BLOCKED,
-   RARCH_CTL_SET_PATCH_BLOCKED,
-   RARCH_CTL_UNSET_PATCH_BLOCKED,
-
-   RARCH_CTL_IS_UPS_PREF,
-   RARCH_CTL_UNSET_UPS_PREF,
-
-   RARCH_CTL_IS_IPS_PREF,
-   RARCH_CTL_UNSET_IPS_PREF,
-
-   RARCH_CTL_IS_SRAM_USED,
-   RARCH_CTL_SET_SRAM_ENABLE,
-   RARCH_CTL_SET_SRAM_ENABLE_FORCE,
-   RARCH_CTL_UNSET_SRAM_ENABLE,
-
-   RARCH_CTL_IS_SRAM_LOAD_DISABLED,
-   RARCH_CTL_IS_SRAM_SAVE_DISABLED,
-
-   /* Block config read */
-   RARCH_CTL_SET_BLOCK_CONFIG_READ,
-   RARCH_CTL_UNSET_BLOCK_CONFIG_READ,
-   RARCH_CTL_IS_BLOCK_CONFIG_READ,
-
-   /* Username */
-   RARCH_CTL_HAS_SET_USERNAME,
-   RARCH_CTL_USERNAME_SET,
-   RARCH_CTL_USERNAME_UNSET,
-
-   RARCH_CTL_SET_FRAME_LIMIT,
-
-   RARCH_CTL_TASK_INIT,
-
-   RARCH_CTL_FRAME_TIME_FREE,
-   RARCH_CTL_SET_FRAME_TIME_LAST,
-   RARCH_CTL_SET_FRAME_TIME,
-
-   RARCH_CTL_IS_IDLE,
-   RARCH_CTL_SET_IDLE,
-
-   RARCH_CTL_GET_WINDOWED_SCALE,
-   RARCH_CTL_SET_WINDOWED_SCALE,
-
-   RARCH_CTL_IS_OVERRIDES_ACTIVE,
-   RARCH_CTL_SET_OVERRIDES_ACTIVE,
-   RARCH_CTL_UNSET_OVERRIDES_ACTIVE,
-
-   RARCH_CTL_IS_REMAPS_CORE_ACTIVE,
-   RARCH_CTL_SET_REMAPS_CORE_ACTIVE,
-   RARCH_CTL_UNSET_REMAPS_CORE_ACTIVE,
-
-   RARCH_CTL_IS_REMAPS_CONTENT_DIR_ACTIVE,
-   RARCH_CTL_SET_REMAPS_CONTENT_DIR_ACTIVE,
-   RARCH_CTL_UNSET_REMAPS_CONTENT_DIR_ACTIVE,
-
-   RARCH_CTL_IS_REMAPS_GAME_ACTIVE,
-   RARCH_CTL_SET_REMAPS_GAME_ACTIVE,
-   RARCH_CTL_UNSET_REMAPS_GAME_ACTIVE,
-
-   RARCH_CTL_IS_MISSING_BIOS,
-   RARCH_CTL_SET_MISSING_BIOS,
-   RARCH_CTL_UNSET_MISSING_BIOS,
-
-   RARCH_CTL_IS_GAME_OPTIONS_ACTIVE,
-
-   RARCH_CTL_IS_NONBLOCK_FORCED,
-   RARCH_CTL_SET_NONBLOCK_FORCED,
-   RARCH_CTL_UNSET_NONBLOCK_FORCED,
-
-   RARCH_CTL_SET_LIBRETRO_PATH,
-
-   RARCH_CTL_IS_PAUSED,
-   RARCH_CTL_SET_PAUSED,
-
-   RARCH_CTL_SET_CORE_SHUTDOWN,
-
-   RARCH_CTL_SET_SHUTDOWN,
-   RARCH_CTL_IS_SHUTDOWN,
-
-   /* Runloop state */
-   RARCH_CTL_STATE_FREE,
-
-   /* Performance counters */
-   RARCH_CTL_GET_PERFCNT,
-   RARCH_CTL_SET_PERFCNT_ENABLE,
-   RARCH_CTL_UNSET_PERFCNT_ENABLE,
-   RARCH_CTL_IS_PERFCNT_ENABLE,
-
-   /* Key event */
-   RARCH_CTL_FRONTEND_KEY_EVENT_GET,
-   RARCH_CTL_KEY_EVENT_GET,
-   RARCH_CTL_DATA_DEINIT,
-
-   /* Core options */
-   RARCH_CTL_HAS_CORE_OPTIONS,
-   RARCH_CTL_GET_CORE_OPTION_SIZE,
-   RARCH_CTL_IS_CORE_OPTION_UPDATED,
-   RARCH_CTL_CORE_OPTIONS_LIST_GET,
-   RARCH_CTL_CORE_OPTION_PREV,
-   RARCH_CTL_CORE_OPTION_NEXT,
-   RARCH_CTL_CORE_OPTIONS_GET,
-   RARCH_CTL_CORE_OPTIONS_INIT,
-   RARCH_CTL_CORE_OPTIONS_DEINIT,
-
-   /* System info */
-   RARCH_CTL_SYSTEM_INFO_INIT,
-   RARCH_CTL_SYSTEM_INFO_FREE,
-
-   /* HTTP server */
-   RARCH_CTL_HTTPSERVER_INIT,
-   RARCH_CTL_HTTPSERVER_DESTROY
-};
-
-enum rarch_capabilities
-{
-   RARCH_CAPABILITIES_NONE = 0,
-   RARCH_CAPABILITIES_CPU,
-   RARCH_CAPABILITIES_COMPILER
-};
-
-enum rarch_override_setting
-{
-   RARCH_OVERRIDE_SETTING_NONE = 0,
-   RARCH_OVERRIDE_SETTING_LIBRETRO,
-   RARCH_OVERRIDE_SETTING_VERBOSITY,
-   RARCH_OVERRIDE_SETTING_LIBRETRO_DIRECTORY,
-   RARCH_OVERRIDE_SETTING_SAVE_PATH,
-   RARCH_OVERRIDE_SETTING_STATE_PATH,
-   RARCH_OVERRIDE_SETTING_NETPLAY_MODE,
-   RARCH_OVERRIDE_SETTING_NETPLAY_IP_ADDRESS,
-   RARCH_OVERRIDE_SETTING_NETPLAY_IP_PORT,
-   RARCH_OVERRIDE_SETTING_NETPLAY_STATELESS_MODE,
-   RARCH_OVERRIDE_SETTING_NETPLAY_CHECK_FRAMES,
-   RARCH_OVERRIDE_SETTING_UPS_PREF,
-   RARCH_OVERRIDE_SETTING_BPS_PREF,
-   RARCH_OVERRIDE_SETTING_IPS_PREF,
-   RARCH_OVERRIDE_SETTING_LIBRETRO_DEVICE,
-   RARCH_OVERRIDE_SETTING_LAST
-};
-
-enum runloop_action
-{
-   RUNLOOP_ACTION_NONE = 0,
-   RUNLOOP_ACTION_AUTOSAVE
-};
-
-struct rarch_main_wrap
-{
-   char **argv;
-   const char *content_path;
-   const char *sram_path;
-   const char *state_path;
-   const char *config_path;
-   const char *libretro_path;
-   bool verbose;
-   bool no_content;
-   bool touched;
-   int argc;
-};
-
-typedef struct rarch_resolution
-{
-   unsigned idx;
-   unsigned id;
-} rarch_resolution_t;
-
-/* All run-time- / command line flag-related globals go here. */
-
-typedef struct global
-{
-   struct
-   {
-      char savefile[8192];
-      char savestate[8192];
-      char cheatfile[8192];
-      char ups[8192];
-      char bps[8192];
-      char ips[8192];
-      char label[8192];
-      char *remapfile;
-   } name;
-
-   /* Recording. */
-   struct
-   {
-      bool use_output_dir;
-      char path[8192];
-      char config[8192];
-      char output_dir[8192];
-      char config_dir[8192];
-      unsigned width;
-      unsigned height;
-
-      size_t gpu_width;
-      size_t gpu_height;
-   } record;
-
-   /* Settings and/or global state that is specific to
-    * a console-style implementation. */
-   struct
-   {
-      bool flickerfilter_enable;
-      bool softfilter_enable;
-
-      struct
-      {
-         bool pal_enable;
-         bool pal60_enable;
-         unsigned char soft_filter_index;
-         unsigned      gamma_correction;
-         unsigned int  flicker_filter_index;
-
-         struct
-         {
-            bool check;
-            unsigned count;
-            uint32_t *list;
-            rarch_resolution_t current;
-            rarch_resolution_t initial;
-         } resolutions;
-      } screen;
-   } console;
-   /* Settings and/or global states specific to menus */
-   struct
-   {
-#ifdef HAVE_MENU
-      retro_time_t prev_start_time ;
-      retro_time_t noop_press_time ;
-      retro_time_t noop_start_time  ;
-      retro_time_t action_start_time  ;
-      retro_time_t action_press_time ;
-      enum menu_action prev_action ;
-#endif
-   } menu;
-} global_t;
-
-bool rarch_ctl(enum rarch_ctl_state state, void *data);
+bool retroarch_ctl(enum rarch_ctl_state state, void *data);
 
 int retroarch_get_capabilities(enum rarch_capabilities type,
       char *s, size_t len);
@@ -300,28 +96,7 @@ void retroarch_override_setting_unset(enum rarch_override_setting enum_idx, void
 
 bool retroarch_override_setting_is_set(enum rarch_override_setting enum_idx, void *data);
 
-bool retroarch_validate_game_options(char *s, size_t len, bool mkdir);
-
-bool retroarch_is_forced_fullscreen(void);
-
-void retroarch_unset_forced_fullscreen(void);
-
-void retroarch_set_current_core_type(enum rarch_core_type type, bool explicitly_set);
-
-void retroarch_set_shader_preset(const char* preset);
-
-void retroarch_unset_shader_preset(void);
-
-char* retroarch_get_shader_preset(void);
-
-/**
- * retroarch_fail:
- * @error_code  : Error code.
- * @error       : Error message to show.
- *
- * Sanely kills the program.
- **/
-void retroarch_fail(int error_code, const char *error);
+const char* retroarch_get_shader_preset(void);
 
 /**
  * retroarch_main_init:
@@ -338,48 +113,100 @@ bool retroarch_main_quit(void);
 
 global_t *global_get_ptr(void);
 
+content_state_t *content_state_get_ptr(void);
+
+unsigned content_get_subsystem_rom_id(void);
+
+int content_get_subsystem(void);
+
+void retroarch_menu_running(void);
+
+void retroarch_path_set_redirect(settings_t *settings);
+
+void retroarch_menu_running_finished(bool quit);
+
+enum retro_language rarch_get_language_from_iso(const char *lang);
+
+void rarch_favorites_init(void);
+
+void rarch_favorites_deinit(void);
+
+/* Audio */
+
 /**
- * runloop_iterate:
+ * config_get_audio_driver_options:
  *
- * Run Libretro core in RetroArch for one frame.
+ * Get an enumerated list of all audio driver names, separated by '|'.
  *
- * Returns: 0 on successful run,
- * Returns 1 if we have to wait until button input in order
- * to wake up the loop.
- * Returns -1 if we forcibly quit out of the
- * RetroArch iteration loop.
+ * Returns: string listing of all audio driver names, separated by '|'.
  **/
-int runloop_iterate(unsigned *sleep_ms);
+const char* config_get_audio_driver_options(void);
 
-void runloop_msg_queue_push(const char *msg, unsigned prio,
-      unsigned duration, bool flush);
+/* BSV Movie */
 
-bool runloop_msg_queue_pull(const char **ret);
+void bsv_movie_frame_rewind(void);
 
-void runloop_get_status(bool *is_paused, bool *is_idle, bool *is_slowmotion,
-      bool *is_perfcnt_enable);
+/* Camera */
 
-void runloop_set(enum runloop_action action);
+unsigned int retroarch_get_rotation(void);
 
-void runloop_unset(enum runloop_action action);
+void retroarch_init_task_queue(void);
 
-void rarch_menu_running(void);
+/* Human readable order of input binds */
+static const unsigned input_config_bind_order[] = {
+   RETRO_DEVICE_ID_JOYPAD_UP,
+   RETRO_DEVICE_ID_JOYPAD_DOWN,
+   RETRO_DEVICE_ID_JOYPAD_LEFT,
+   RETRO_DEVICE_ID_JOYPAD_RIGHT,
+   RETRO_DEVICE_ID_JOYPAD_A,
+   RETRO_DEVICE_ID_JOYPAD_B,
+   RETRO_DEVICE_ID_JOYPAD_X,
+   RETRO_DEVICE_ID_JOYPAD_Y,
+   RETRO_DEVICE_ID_JOYPAD_SELECT,
+   RETRO_DEVICE_ID_JOYPAD_START,
+   RETRO_DEVICE_ID_JOYPAD_L,
+   RETRO_DEVICE_ID_JOYPAD_R,
+   RETRO_DEVICE_ID_JOYPAD_L2,
+   RETRO_DEVICE_ID_JOYPAD_R2,
+   RETRO_DEVICE_ID_JOYPAD_L3,
+   RETRO_DEVICE_ID_JOYPAD_R3,
+   19, /* Left Analog Up */
+   18, /* Left Analog Down */
+   17, /* Left Analog Left */
+   16, /* Left Analog Right */
+   23, /* Right Analog Up */
+   22, /* Right Analog Down */
+   21, /* Right Analog Left */
+   20, /* Right Analog Right */
+};
 
-void rarch_menu_running_finished(void);
+/* Creates folder and core options stub file for subsequent runs */
+bool core_options_create_override(bool game_specific);
+bool core_options_remove_override(bool game_specific);
+void core_options_reset(void);
+void core_options_flush(void);
 
-bool retroarch_is_on_main_thread(void);
+typedef enum apple_view_type
+{
+   APPLE_VIEW_TYPE_NONE = 0,
+   APPLE_VIEW_TYPE_OPENGL_ES,
+   APPLE_VIEW_TYPE_OPENGL,
+   APPLE_VIEW_TYPE_VULKAN,
+   APPLE_VIEW_TYPE_METAL
+} apple_view_type_t;
 
-rarch_system_info_t *runloop_get_system_info(void);
+bool retroarch_get_current_savestate_path(char *path, size_t len);
 
-#ifdef HAVE_THREADS
-void runloop_msg_queue_lock(void);
+bool retroarch_get_entry_state_path(char *path, size_t len, unsigned slot);
 
-void runloop_msg_queue_unlock(void);
-#endif
-
-#ifdef HAVE_DYNAMIC
-bool retroarch_core_set_on_cmdline(void);
-#endif
+/**
+ * retroarch_fail:
+ * @error_code  : Error code.
+ * @error       : Error message to show.
+ *
+ * Sanely kills the program.
+ **/
+void retroarch_fail(int error_code, const char *error);
 
 RETRO_END_DECLS
 

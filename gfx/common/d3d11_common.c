@@ -20,8 +20,41 @@
 #include "d3d11_common.h"
 #include "d3dcompiler_common.h"
 
-#ifdef HAVE_DYNAMIC
+#if defined(HAVE_DYNAMIC) && !defined(__WINRT__)
 #include <dynamic/dylib.h>
+
+HRESULT WINAPI D3D11CreateDevice(
+      IDXGIAdapter*   pAdapter,
+      D3D_DRIVER_TYPE DriverType,
+      HMODULE         Software,
+      UINT            Flags,
+      CONST D3D_FEATURE_LEVEL* pFeatureLevels,
+      UINT                     FeatureLevels,
+      UINT                     SDKVersion,
+      ID3D11Device**              ppDevice,
+      D3D_FEATURE_LEVEL*          pFeatureLevel,
+      ID3D11DeviceContext**       ppImmediateContext)
+{
+   static dylib_t                                d3d11_dll;
+   static PFN_D3D11_CREATE_DEVICE                fp;
+
+   if (!d3d11_dll)
+      d3d11_dll = dylib_load("d3d11.dll");
+
+   if (!d3d11_dll)
+      return TYPE_E_CANTLOADLIBRARY;
+
+   if (!fp)
+      fp = (PFN_D3D11_CREATE_DEVICE)dylib_proc(
+            d3d11_dll, "D3D11CreateDevice");
+
+   if (!fp)
+      return TYPE_E_DLLFUNCTIONNOTFOUND;
+
+   return fp(
+         pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion,
+         ppDevice, pFeatureLevel, ppImmediateContext);
+}
 
 HRESULT WINAPI D3D11CreateDeviceAndSwapChain(
       IDXGIAdapter*   pAdapter,
@@ -144,10 +177,8 @@ void d3d11_update_texture(
          0, D3D11_MAP_WRITE, 0, &mapped_texture);
 
 #if 0
-   PERF_START();
    conv_rgb565_argb8888(mapped_texture.pData, data, width, height,
          mapped_texture.RowPitch, pitch);
-   PERF_STOP();
 #else
    dxgi_copy(
          width, height, format, pitch, data,
@@ -195,30 +226,52 @@ bool d3d11_init_shader(
       LPCSTR                          gs_entry,
       const D3D11_INPUT_ELEMENT_DESC* input_element_descs,
       UINT                            num_elements,
-      d3d11_shader_t*                 out)
+      d3d11_shader_t*                 out,
+      enum d3d11_feature_level_hint   hint)
 {
-   D3DBlob vs_code = NULL;
-   D3DBlob ps_code = NULL;
-   D3DBlob gs_code = NULL;
+   D3DBlob vs_code    = NULL;
+   D3DBlob ps_code    = NULL;
+   D3DBlob gs_code    = NULL;
+   bool success       = true;
+   const char *vs_str = NULL;
+   const char *ps_str = NULL;
+   const char *gs_str = NULL;
 
-   bool success = true;
+   switch (hint)
+   {
+      case D3D11_FEATURE_LEVEL_HINT_11_0:
+      case D3D11_FEATURE_LEVEL_HINT_11_1:
+      case D3D11_FEATURE_LEVEL_HINT_12_0:
+      case D3D11_FEATURE_LEVEL_HINT_12_1:
+      case D3D11_FEATURE_LEVEL_HINT_12_2:
+         vs_str       = "vs_5_0";
+         ps_str       = "ps_5_0";
+         gs_str       = "gs_5_0";
+         break;
+      case D3D11_FEATURE_LEVEL_HINT_DONTCARE:
+      default:
+         vs_str       = "vs_4_0";
+         ps_str       = "ps_4_0";
+         gs_str       = "gs_4_0";
+         break;
+   }
 
    if (!src) /* LPCWSTR filename */
    {
-      if (vs_entry && !d3d_compile_from_file((LPCWSTR)src_name, vs_entry, "vs_4_0", &vs_code))
+      if (vs_entry && !d3d_compile_from_file((LPCWSTR)src_name, vs_entry, vs_str, &vs_code))
          success = false;
-      if (ps_entry && !d3d_compile_from_file((LPCWSTR)src_name, ps_entry, "ps_4_0", &ps_code))
+      if (ps_entry && !d3d_compile_from_file((LPCWSTR)src_name, ps_entry, ps_str, &ps_code))
          success = false;
-      if (gs_entry && !d3d_compile_from_file((LPCWSTR)src_name, gs_entry, "gs_4_0", &gs_code))
+      if (gs_entry && !d3d_compile_from_file((LPCWSTR)src_name, gs_entry, gs_str, &gs_code))
          success = false;
    }
    else /* char array */
    {
-      if (vs_entry && !d3d_compile(src, size, (LPCSTR)src_name, vs_entry, "vs_4_0", &vs_code))
+      if (vs_entry && !d3d_compile(src, size, (LPCSTR)src_name, vs_entry, vs_str, &vs_code))
          success = false;
-      if (ps_entry && !d3d_compile(src, size, (LPCSTR)src_name, ps_entry, "ps_4_0", &ps_code))
+      if (ps_entry && !d3d_compile(src, size, (LPCSTR)src_name, ps_entry, ps_str, &ps_code))
          success = false;
-      if (gs_entry && !d3d_compile(src, size, (LPCSTR)src_name, gs_entry, "gs_4_0", &gs_code))
+      if (gs_entry && !d3d_compile(src, size, (LPCSTR)src_name, gs_entry, gs_str, &gs_code))
          success = false;
    }
 

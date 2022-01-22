@@ -19,7 +19,6 @@
 
 #include "hid_types.h"
 #include "input.h"
-#include "../../common/hid/hid_device_driver.h"
 
 #define DEVICE_UNUSED 0
 #define DEVICE_USED   1
@@ -52,9 +51,11 @@ struct wiiu_hid {
  */
 struct wiiu_adapter {
    wiiu_adapter_t *next;
-   hid_device_t *driver;
-   void *driver_handle;
+   pad_connection_interface_t *pad_driver;
+   void *pad_driver_data;
    wiiu_hid_t *hid;
+   uint16_t vendor_id;
+   uint16_t product_id;
    uint8_t state;
    uint8_t *rx_buffer;
    int32_t rx_size;
@@ -62,6 +63,7 @@ struct wiiu_adapter {
    int32_t tx_size;
    uint32_t handle;
    uint8_t interface_index;
+   char device_name[32];
    bool connected;
 };
 
@@ -72,7 +74,6 @@ struct wiiu_adapter {
  */
 struct wiiu_attach {
    wiiu_attach_event *next;
-   hid_device_t *driver;
    uint32_t type;
    uint32_t handle;
    uint16_t vendor_id;
@@ -82,6 +83,7 @@ struct wiiu_attach {
    uint8_t is_mouse;
    uint16_t max_packet_size_rx;
    uint16_t max_packet_size_tx;
+   uint8_t device_name[32];
 };
 
 struct _wiiu_event_list {
@@ -93,13 +95,6 @@ struct _wiiu_adapter_list {
    OSFastMutex lock;
    wiiu_adapter_t *list;
 };
-
-extern wiiu_pad_functions_t pad_functions;
-extern input_device_driver_t wiiu_joypad;
-extern input_device_driver_t wpad_driver;
-extern input_device_driver_t kpad_driver;
-extern input_device_driver_t hidpad_driver;
-extern hid_driver_t wiiu_hid;
 
 static void *alloc_zeroed(size_t alignment, size_t size);
 static OSThread *new_thread(void);
@@ -123,9 +118,7 @@ static void wiiu_hid_attach(wiiu_hid_t *hid, wiiu_attach_event *event);
 static void wiiu_hid_detach(wiiu_hid_t *hid, wiiu_attach_event *event);
 static void synchronized_process_adapters(wiiu_hid_t *hid);
 static void synchronized_add_to_adapters_list(wiiu_adapter_t *adapter);
-static wiiu_adapter_t *synchronized_remove_from_adapters_list(uint32_t handle);
 static void synchronized_add_event(wiiu_attach_event *event);
-static void wiiu_start_read_loop(wiiu_adapter_t *adapter);
 static void wiiu_hid_read_loop_callback(uint32_t handle, int32_t error,
                uint8_t *buffer, uint32_t buffer_size, void *userdata);
 static void wiiu_hid_polling_thread_cleanup(OSThread *thread, void *stack);

@@ -1,5 +1,6 @@
 /*  RetroArch - A frontend for libretro.
  *  Copyright (C) 2014-2018 - Ali Bouhlel
+ *  Copyright (C) 2016-2019 - Brad Parker
  *
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -43,10 +44,12 @@ typedef ID3D12GraphicsCommandList*                D3D12GraphicsCommandList;
 typedef ID3D12CommandQueue*                       D3D12CommandQueue;
 typedef ID3D12Device*                             D3D12Device;
 typedef ID3D12PipelineLibrary*                    D3D12PipelineLibrary;
+#ifdef DEBUG
 typedef ID3D12Debug*                              D3D12Debug;
 typedef ID3D12DebugDevice*                        D3D12DebugDevice;
 typedef ID3D12DebugCommandQueue*                  D3D12DebugCommandQueue;
 typedef ID3D12DebugCommandList*                   D3D12DebugCommandList;
+#endif
 typedef ID3D12InfoQueue*                          D3D12InfoQueue;
 
 static INLINE ULONG D3D12Release(void* object)
@@ -935,6 +938,8 @@ D3D12Serialize(D3D12PipelineLibrary pipeline_library, void* data, SIZE_T data_si
 {
    return pipeline_library->lpVtbl->Serialize(pipeline_library, data, data_size_in_bytes);
 }
+
+#ifdef DEBUG
 static INLINE ULONG D3D12ReleaseDebug(D3D12Debug debug) { return debug->lpVtbl->Release(debug); }
 static INLINE void  D3D12EnableDebugLayer(D3D12Debug debug)
 {
@@ -988,6 +993,8 @@ D3D12GetDebugCommandListFeatureMask(D3D12DebugCommandList debug_command_list)
 {
    return debug_command_list->lpVtbl->GetFeatureMask(debug_command_list);
 }
+#endif
+
 static INLINE ULONG D3D12ReleaseInfoQueue(D3D12InfoQueue info_queue)
 {
    return info_queue->lpVtbl->Release(info_queue);
@@ -1001,6 +1008,7 @@ static INLINE void D3D12ClearStoredMessages(D3D12InfoQueue info_queue)
 {
    info_queue->lpVtbl->ClearStoredMessages(info_queue);
 }
+#ifndef __WINRT__
 static INLINE HRESULT D3D12GetMessageA(
       D3D12InfoQueue info_queue,
       UINT64         message_index,
@@ -1009,6 +1017,7 @@ static INLINE HRESULT D3D12GetMessageA(
 {
    return info_queue->lpVtbl->GetMessageA(info_queue, message_index, message, message_byte_length);
 }
+#endif
 static INLINE UINT64 D3D12GetNumMessagesAllowedByStorageFilter(D3D12InfoQueue info_queue)
 {
    return info_queue->lpVtbl->GetNumMessagesAllowedByStorageFilter(info_queue);
@@ -1156,11 +1165,12 @@ static INLINE BOOL D3D12GetMuteDebugOutput(D3D12InfoQueue info_queue)
 }
 
 /* end of auto-generated */
-
+#ifdef DEBUG
 static INLINE HRESULT D3D12GetDebugInterface_(D3D12Debug* out)
 {
    return D3D12GetDebugInterface(uuidof(ID3D12Debug), (void**)out);
 }
+#endif
 
 static INLINE HRESULT
 D3D12CreateDevice_(DXGIAdapter adapter, D3D_FEATURE_LEVEL MinimumFeatureLevel, D3D12Device* out)
@@ -1258,8 +1268,10 @@ D3D12GetGPUDescriptorHandleForHeapStart(D3D12DescriptorHeap descriptor_heap)
 #include <gfx/math/matrix_4x4.h>
 
 #include "../common/d3dcompiler_common.h"
-#include "../video_driver.h"
+#include "../../retroarch.h"
 #include "../drivers_shader/slang_process.h"
+
+#define D3D12_MAX_GPU_COUNT 16
 
 typedef struct d3d12_vertex_t
 {
@@ -1335,15 +1347,19 @@ typedef struct ALIGN(16)
    float time;
 } d3d12_uniform_t;
 
-static_assert(
-      (!(sizeof(d3d12_uniform_t) & 0xF)), "sizeof(d3d12_uniform_t) must be a multiple of 16");
-
 typedef struct
 {
    unsigned    cur_mon_id;
+#ifdef __WINRT__
+   DXGIFactory2 factory;
+#else
    DXGIFactory factory;
+#endif
    DXGIAdapter adapter;
    D3D12Device device;
+
+   IDXGIAdapter1 *adapters[D3D12_MAX_GPU_COUNT];
+   struct string_list *gpu_list;
 
    struct
    {
@@ -1369,12 +1385,21 @@ typedef struct
    {
       DXGISwapChain               handle;
       D3D12Resource               renderTargets[2];
+#ifdef HAVE_DXGI_HDR
+      d3d12_texture_t             back_buffer;
+#endif
       D3D12_CPU_DESCRIPTOR_HANDLE desc_handles[2];
       D3D12_VIEWPORT              viewport;
       D3D12_RECT                  scissorRect;
       float                       clearcolor[4];
       int                         frame_index;
       bool                        vsync;
+      unsigned                    swap_interval;
+#ifdef HAVE_DXGI_HDR
+      enum dxgi_swapchain_bit_depth bit_depth;
+      DXGI_COLOR_SPACE_TYPE       color_space;
+      DXGI_FORMAT                 formats[DXGI_SWAPCHAIN_BIT_DEPTH_COUNT];
+#endif
    } chain;
 
    struct
@@ -1389,6 +1414,21 @@ typedef struct
       float4_t                        output_size;
       int                             rotation;
    } frame;
+
+#ifdef HAVE_DXGI_HDR
+   struct
+   {
+      dxgi_hdr_uniform_t               ubo_values;
+      D3D12Resource                    ubo;
+      D3D12_CONSTANT_BUFFER_VIEW_DESC  ubo_view;
+      float                            max_output_nits;
+      float                            min_output_nits;
+      float                            max_cll;
+      float                            max_fall;
+      bool                             support;
+      bool                             enable;
+   } hdr;
+#endif
 
    struct
    {
@@ -1438,6 +1478,7 @@ typedef struct
       D3D12_RECT                      scissorRect;
       pass_semantics_t                semantics;
       uint32_t                        frame_count;
+      int32_t                         frame_direction;
       D3D12_GPU_DESCRIPTOR_HANDLE     textures;
       D3D12_GPU_DESCRIPTOR_HANDLE     samplers;
    } pass[GFX_MAX_SHADERS];
@@ -1472,19 +1513,20 @@ typedef enum {
    ROOT_ID_SAMPLER_T,
    ROOT_ID_UBO,
    ROOT_ID_PC,
-   ROOT_ID_MAX,
+   ROOT_ID_MAX
 } root_signature_parameter_index_t;
 
 typedef enum {
    CS_ROOT_ID_TEXTURE_T = 0,
    CS_ROOT_ID_UAV_T,
    CS_ROOT_ID_CONSTANTS,
-   CS_ROOT_ID_MAX,
+   CS_ROOT_ID_MAX
 } compute_root_index_t;
 
 RETRO_BEGIN_DECLS
 
 extern D3D12_RENDER_TARGET_BLEND_DESC d3d12_blend_enable_desc;
+extern D3D12_RENDER_TARGET_BLEND_DESC d3d12_blend_disable_desc;
 
 bool d3d12_init_base(d3d12_video_t* d3d12);
 
@@ -1499,7 +1541,7 @@ bool d3d12_init_pipeline(
       D3D12_GRAPHICS_PIPELINE_STATE_DESC* desc,
       D3D12PipelineState*                 out);
 
-bool d3d12_init_swapchain(d3d12_video_t* d3d12, int width, int height, HWND hwnd);
+bool d3d12_init_swapchain(d3d12_video_t* d3d12, int width, int height, void *corewindow);
 
 bool d3d12_init_queue(d3d12_video_t* d3d12);
 

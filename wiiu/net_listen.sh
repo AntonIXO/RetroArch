@@ -1,61 +1,49 @@
-#!/bin/bash
+#!/usr/bin/env python
+# Adapted from the Python UDP broadcast client example by ninedraft: https://github.com/ninedraft/python-udp/
 
-#
-# This script listens for the WiiU network logger and prints the messages to
-# the terminal.
-#
-# If you would like a logfile, pipe this script's output to tee.
+from __future__ import print_function
 
-script_dir=$(dirname $(readlink -f $0))
+import datetime
+import os
+import signal
+import sys
 
-IP=$(which ip 2>/dev/null | grep '^/')
-IFCONFIG=$(which ifconfig 2>/dev/null | grep '^/')
-TS=$(which ts 2>/dev/null | grep '^/')
+from socket import (
+    socket,
+    AF_INET,
+    SOCK_DGRAM,
+    IPPROTO_UDP,
+    SOL_SOCKET,
+    SO_REUSEPORT,
+    SO_BROADCAST
+)
 
-# Using wiiu-devel.properties ensure your make file and this listen script
-# stay in sync with each other.
-#
-# See wiiu-devel.properties.template for instructions.
+def get_bind_port():
+  default = 4405
+  candidate = os.getenv('PC_DEVELOPMENT_TCP_PORT', str(default))
+  try:
+    port = int(candidate)
+  except ValueError:
+    port = default
 
-if [ -e "$script_dir/../wiiu-devel.properties" ]; then
-  . $script_dir/../wiiu-devel.properties
-fi
+  return port
 
-if [ -z "$PC_DEVELOPMENT_TCP_PORT" ]; then
-  PC_DEVELOPMENT_TCP_PORT=4405
-fi
+def exit_gracefully(signum, frame):
+    sys.exit(0)
 
-exit_listen_loop=0
 
-getBroadcastIp()
-{
-  if [ ! -z "$IP" ]; then
-    $IP addr show | grep 'inet' |grep 'brd' | awk '{print $4}'
-  elif [ ! -z "$IFCONFIG" ]; then
-    $IFCONFIG | grep 'broadcast' | awk '{print $6}'
-  else
-    echo "255.255.255.255"
-  fi
-}
+def main():
+    signal.signal(signal.SIGINT, exit_gracefully)
+    signal.signal(signal.SIGTERM, exit_gracefully)
 
-#
-# This prevents a tug-of-war between bash and netcat as to who gets the
-# CTRL+C code.
-#
-trap 'exit_listen_loop=1' SIGINT
+    client = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+    client.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+    client.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+    client.bind(("", get_bind_port()) )
+    while True:
+      data, addr = client.recvfrom(1024)
+      print(datetime.datetime.now().isoformat(), data.decode('utf-8').rstrip('\r\n'))
 
-if [ -z "$TS" ]; then
-  echo "[WARN] 'ts' not found. Install the moreutils package to get timestamps."
-fi
 
-broadcast=$(getBroadcastIp)
-echo "Listening for UDP packets on broadcast IP: $broadcast"
-
-while [ $exit_listen_loop -eq 0 ]; do
-  echo ========= `date` =========
-  if [ -z "$TS" ]; then
-    netcat -kluw 0 $broadcast $PC_DEVELOPMENT_TCP_PORT
-  else
-    netcat -kluw 0 $broadcast $PC_DEVELOPMENT_TCP_PORT |ts '[%Y-%m-%d %H:%M:%.S]'
-  fi
-done
+if __name__ == '__main__':
+    main()

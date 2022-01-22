@@ -1,6 +1,42 @@
-#pragma once
+#ifndef _DXGI_COMMON_H
+#define _DXGI_COMMON_H
 
 #include <retro_inline.h>
+
+#ifndef HAVE_DXGI_HDR
+#define HAVE_DXGI_HDR
+#endif
+
+#ifdef HAVE_DXGI_HDR
+#ifndef ALIGN
+#ifdef _MSC_VER
+#define ALIGN(x) __declspec(align(x))
+#else
+#define ALIGN(x) __attribute__((aligned(x)))
+#endif
+#endif
+
+#include <gfx/math/matrix_4x4.h>
+
+typedef struct ALIGN(16)
+{
+   math_matrix_4x4   mvp;
+   float             contrast;         /* 2.0f    */
+   float             paper_white_nits; /* 200.0f  */
+   float             max_nits;         /* 1000.0f */
+   float             expand_gamut;     /* 1.0f    */
+   float             inverse_tonemap;  /* 1.0f    */
+   float             hdr10;            /* 1.0f    */
+} dxgi_hdr_uniform_t;
+
+enum dxgi_swapchain_bit_depth
+{
+   DXGI_SWAPCHAIN_BIT_DEPTH_8 = 0,
+   DXGI_SWAPCHAIN_BIT_DEPTH_10,
+   DXGI_SWAPCHAIN_BIT_DEPTH_16,
+   DXGI_SWAPCHAIN_BIT_DEPTH_COUNT
+};
+#endif
 
 #ifdef __MINGW32__
 #define __REQUIRED_RPCNDR_H_VERSION__ 475
@@ -233,7 +269,7 @@
 #endif
 
 #include <assert.h>
-#include <dxgi1_5.h>
+#include <dxgi1_6.h>
 
 #ifndef countof
 #define countof(a) (sizeof(a) / sizeof(*a))
@@ -260,6 +296,19 @@ static INLINE ULONG Release(void* object)
 #endif
 #endif
 
+#if !defined(__cplusplus) || defined(CINTERFACE)
+#ifndef COM_ADDREF_DECLARED
+#define COM_ADDREF_DECLARED
+static INLINE ULONG AddRef(void* object)
+{
+   if (object)
+      return ((IUnknown*)object)->lpVtbl->AddRef((IUnknown*)object);
+
+   return 0;
+}
+#endif
+#endif
+
 /* auto-generated */
 
 typedef IDXGIObject*            DXGIObject;
@@ -268,15 +317,19 @@ typedef IDXGIResource*          DXGIResource;
 typedef IDXGIKeyedMutex*        DXGIKeyedMutex;
 typedef IDXGISurface1*          DXGISurface;
 typedef IDXGIOutput*            DXGIOutput;
+typedef IDXGIOutput6*           DXGIOutput6;
 typedef IDXGIDevice*            DXGIDevice;
 typedef IDXGIFactory1*          DXGIFactory;
+#ifdef __WINRT__
+typedef IDXGIFactory2*          DXGIFactory2;
+#endif
 typedef IDXGIAdapter1*          DXGIAdapter;
 typedef IDXGIDisplayControl*    DXGIDisplayControl;
 typedef IDXGIOutputDuplication* DXGIOutputDuplication;
 typedef IDXGIDecodeSwapChain*   DXGIDecodeSwapChain;
 typedef IDXGIFactoryMedia*      DXGIFactoryMedia;
 typedef IDXGISwapChainMedia*    DXGISwapChainMedia;
-typedef IDXGISwapChain3*        DXGISwapChain;
+typedef IDXGISwapChain4*        DXGISwapChain;
 
 #if !defined(__cplusplus) || defined(CINTERFACE)
 static INLINE ULONG DXGIReleaseDeviceSubObject(DXGIDeviceSubObject device_sub_object)
@@ -376,6 +429,14 @@ static INLINE HRESULT DXGIGetDisplaySurfaceData(DXGIOutput output, DXGISurface d
 {
    return output->lpVtbl->GetDisplaySurfaceData(output, (IDXGISurface*)destination);
 }
+static INLINE HRESULT DXGIGetOutputDesc(DXGIOutput output, DXGI_OUTPUT_DESC* desc)
+{
+   return output->lpVtbl->GetDesc(output, desc);
+}
+static INLINE HRESULT DXGIGetOutputDesc1(DXGIOutput6 output, DXGI_OUTPUT_DESC1* desc)
+{
+   return output->lpVtbl->GetDesc1(output, desc);
+}
 static INLINE ULONG DXGIReleaseDevice(DXGIDevice device) { return device->lpVtbl->Release(device); }
 static INLINE HRESULT DXGICreateSurface(
       DXGIDevice            device,
@@ -414,6 +475,14 @@ static INLINE HRESULT DXGICreateSwapChain(
    return factory->lpVtbl->CreateSwapChain(
          factory, (IUnknown*)device, desc, (IDXGISwapChain**)swap_chain);
 }
+#ifdef __WINRT__
+static INLINE HRESULT DXGICreateSwapChainForCoreWindow(
+      DXGIFactory2 factory, void* device, void* corewindow, DXGI_SWAP_CHAIN_DESC1* desc, DXGIOutput restrict_to, DXGISwapChain* swap_chain)
+{
+   return factory->lpVtbl->CreateSwapChainForCoreWindow(
+         factory, (IUnknown*)device, (IUnknown*)corewindow, desc, restrict_to, (IDXGISwapChain1**)swap_chain);
+}
+#endif
 static INLINE HRESULT
 DXGICreateSoftwareAdapter(DXGIFactory factory, HMODULE module, DXGIAdapter* adapter)
 {
@@ -423,10 +492,22 @@ static INLINE HRESULT DXGIEnumAdapters(DXGIFactory factory, UINT id, DXGIAdapter
 {
    return factory->lpVtbl->EnumAdapters1(factory, id, adapter);
 }
+#ifdef __WINRT__
+static INLINE HRESULT DXGIEnumAdapters2(DXGIFactory2 factory, UINT id, DXGIAdapter* adapter)
+{
+   return factory->lpVtbl->EnumAdapters1(factory, id, adapter);
+}
+#endif
 static INLINE BOOL DXGIIsCurrent(DXGIFactory factory)
 {
    return factory->lpVtbl->IsCurrent(factory);
 }
+#ifdef __WINRT__
+static INLINE BOOL DXGIIsCurrent2(DXGIFactory2 factory)
+{
+   return factory->lpVtbl->IsCurrent(factory);
+}
+#endif
 static INLINE ULONG DXGIReleaseAdapter(DXGIAdapter adapter)
 {
    return adapter->lpVtbl->Release(adapter);
@@ -444,6 +525,7 @@ static INLINE HRESULT DXGIGetAdapterDesc1(DXGIAdapter adapter, DXGI_ADAPTER_DESC
 {
    return adapter->lpVtbl->GetDesc1(adapter, desc);
 }
+#ifndef __WINRT__
 static INLINE ULONG DXGIReleaseDisplayControl(DXGIDisplayControl display_control)
 {
    return display_control->lpVtbl->Release(display_control);
@@ -612,14 +694,14 @@ static INLINE HRESULT DXGICheckPresentDurationSupport(
          swap_chain_media, desired_present_duration, closest_smaller_present_duration,
          closest_larger_present_duration);
 }
+#endif
 static INLINE ULONG DXGIReleaseSwapChain(DXGISwapChain swap_chain)
 {
    return swap_chain->lpVtbl->Release(swap_chain);
 }
-static INLINE HRESULT DXGIPresent(DXGISwapChain swap_chain, UINT sync_interval, UINT flags)
-{
-   return swap_chain->lpVtbl->Present(swap_chain, sync_interval, flags);
-}
+
+#define DXGIPresent(swap_chain, sync_interval, flags) ((swap_chain)->lpVtbl->Present((swap_chain), (UINT)(sync_interval), flags))
+
 static INLINE HRESULT DXGIGetBuffer(DXGISwapChain swap_chain, UINT buffer, IDXGISurface** out)
 {
    return swap_chain->lpVtbl->GetBuffer(swap_chain, buffer, uuidof(IDXGISurface), (void**)out);
@@ -634,17 +716,9 @@ DXGIGetFullscreenState(DXGISwapChain swap_chain, BOOL* fullscreen, DXGIOutput* t
 {
    return swap_chain->lpVtbl->GetFullscreenState(swap_chain, fullscreen, target);
 }
-static INLINE HRESULT DXGIResizeBuffers(
-      DXGISwapChain swap_chain,
-      UINT          buffer_count,
-      UINT          width,
-      UINT          height,
-      DXGI_FORMAT   new_format,
-      UINT          swap_chain_flags)
-{
-   return swap_chain->lpVtbl->ResizeBuffers(
-         swap_chain, buffer_count, width, height, new_format, swap_chain_flags);
-}
+
+#define DXGIResizeBuffers(swap_chain, buffer_count, width, height, new_format, swap_chain_flags) ((swap_chain)->lpVtbl->ResizeBuffers((swap_chain), buffer_count, width, height, new_format, swap_chain_flags))
+
 static INLINE HRESULT
 DXGIResizeTarget(DXGISwapChain swap_chain, DXGI_MODE_DESC* new_target_parameters)
 {
@@ -746,10 +820,13 @@ static INLINE HRESULT DXGICheckColorSpaceSupport(
 {
    return swap_chain->lpVtbl->CheckColorSpaceSupport(swap_chain, color_space, color_space_support);
 }
-static INLINE HRESULT
-DXGISetColorSpace1(DXGISwapChain swap_chain, DXGI_COLOR_SPACE_TYPE color_space)
+static INLINE HRESULT DXGISetColorSpace1(DXGISwapChain swap_chain, DXGI_COLOR_SPACE_TYPE color_space)
 {
    return swap_chain->lpVtbl->SetColorSpace1(swap_chain, color_space);
+}
+static INLINE HRESULT DXGISetHDRMetaData(DXGISwapChain swap_chain, DXGI_HDR_METADATA_TYPE type, UINT size, void *metaData)
+{
+   return swap_chain->lpVtbl->SetHDRMetaData(swap_chain, type, size, metaData);
 }
 #endif
 /* end of auto-generated */
@@ -758,10 +835,16 @@ static INLINE HRESULT DXGICreateFactory(DXGIFactory* factory)
 {
    return CreateDXGIFactory1(uuidof(IDXGIFactory1), (void**)factory);
 }
+#ifdef __WINRT__
+static INLINE HRESULT DXGICreateFactory2(DXGIFactory2* factory)
+{
+   return CreateDXGIFactory1(uuidof(IDXGIFactory2), (void**)factory);
+}
+#endif
 
 /* internal */
 
-#include "../video_driver.h"
+#include "../../retroarch.h"
 #include "../drivers_shader/glslang_util.h"
 
 #define DXGI_COLOR_RGBA(r, g, b, a) (((UINT32)(a) << 24) | ((UINT32)(b) << 16) | ((UINT32)(g) << 8) | ((UINT32)(r) << 0))
@@ -792,29 +875,28 @@ void dxgi_copy(
       int         dst_pitch,
       void*       dst_data);
 
-void dxgi_update_title(video_frame_info_t* video_info);
-void dxgi_input_driver(const char* name, const input_driver_t** input, void** input_data);
+#ifdef HAVE_DXGI_HDR
+#ifdef __WINRT__
+bool dxgi_check_display_hdr_support(DXGIFactory2 factory, HWND hwnd);
+#else
+bool dxgi_check_display_hdr_support(DXGIFactory factory, HWND hwnd);
+#endif
+void dxgi_swapchain_color_space(DXGISwapChain handle, DXGI_COLOR_SPACE_TYPE
+*chain_color_space, DXGI_COLOR_SPACE_TYPE color_space);
+void dxgi_set_hdr_metadata(
+      DXGISwapChain                 handle,
+      bool                          hdr_supported,
+      enum dxgi_swapchain_bit_depth chain_bit_depth,
+      DXGI_COLOR_SPACE_TYPE         chain_color_space,
+      float                         max_output_nits,
+      float                         min_output_nits,
+      float                         max_cll,
+      float                         max_fall
+);
+#endif
 
 DXGI_FORMAT glslang_format_to_dxgi(glslang_format fmt);
 
 RETRO_END_DECLS
 
-#if 1
-#include "../../performance_counters.h"
-
-#ifndef PERF_START
-#define PERF_START() \
-   static struct retro_perf_counter perfcounter = { __FUNCTION__ }; \
-   LARGE_INTEGER                    start, stop; \
-   rarch_perf_register(&perfcounter); \
-   perfcounter.call_cnt++; \
-   QueryPerformanceCounter(&start)
-
-#define PERF_STOP() \
-   QueryPerformanceCounter(&stop); \
-   perfcounter.total += stop.QuadPart - start.QuadPart
-#endif
-#else
-#define PERF_START()
-#define PERF_STOP()
 #endif

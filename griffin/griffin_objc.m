@@ -27,24 +27,20 @@
 #include "../frontend/drivers/platform_darwin.m"
 #endif
 
-#if defined(HAVE_COCOATOUCH) || defined(HAVE_COCOA)
-#include "../gfx/drivers_context/macos_ctx.m"
+#if defined(HAVE_COCOATOUCH) || defined(HAVE_COCOA) || defined(HAVE_COCOA_METAL)
+
 #include "../ui/drivers/cocoa/cocoa_common.m"
-
-#if defined(HAVE_COCOATOUCH)
-
-#if TARGET_OS_IPHONE
-#include "../ui/drivers/cocoa/cocoatouch_menu.m"
-
-#include "../ui/drivers/ui_cocoatouch.m"
+#if defined(HAVE_OPENGL) || defined(HAVE_OPENGL_ES)
+#include "../gfx/drivers_context/cocoa_gl_ctx.m"
+#endif
+#if defined(HAVE_VULKAN)
+#include "../gfx/drivers_context/cocoa_vk_ctx.m"
 #endif
 
-#elif defined(HAVE_COCOA)
+#if defined(OSX)
 #include "../ui/drivers/ui_cocoa.m"
-#include "../ui/drivers/cocoa/ui_cocoa_browser_window.m"
-#include "../ui/drivers/cocoa/ui_cocoa_window.m"
-#include "../ui/drivers/cocoa/ui_cocoa_msg_window.m"
-#include "../ui/drivers/cocoa/ui_cocoa_application.m"
+#else
+#include "../ui/drivers/ui_cocoatouch.m"
 #endif
 
 #endif
@@ -53,19 +49,18 @@
 #include "../input/drivers_joypad/mfi_joypad.m"
 #endif
 
+#ifdef HAVE_COREAUDIO3
+#include "../audio/drivers/coreaudio3.m"
+#endif
+
 #if defined(HAVE_DISCORD)
 #include "../deps/discord-rpc/src/discord_register_osx.m"
 #endif
 
 #ifdef HAVE_METAL
-#import "../gfx/common/metal/Context.m"
-#import "../gfx/common/metal/Filter.m"
-#import "../gfx/common/metal/RendererCommon.m"
-#import "../gfx/common/metal/View.m"
-#import "../gfx/common/metal/TexturedView.m"
-#import "../gfx/common/metal/MenuDisplay.m"
+#import "../gfx/common/metal/metal_renderer.m"
 #import "../gfx/common/metal_common.m"
 #import "../gfx/drivers/metal.m"
-#import "../menu/drivers_display/menu_display_metal.m"
+#import "../gfx/drivers_display/gfx_display_metal.m"
 #import "../gfx/drivers_font/metal_raster_font.m"
 #endif

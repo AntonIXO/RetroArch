@@ -23,141 +23,13 @@
 
 #include <retro_common_api.h>
 
-#include "core_type.h"
-#include "input/input_defines.h"
+#include "retroarch_types.h"
 
 RETRO_BEGIN_DECLS
 
-enum
-{
-   /* Polling is performed before
-    * call to retro_run. */
-   POLL_TYPE_EARLY = 0,
-
-   /* Polling is performed when requested. */
-   POLL_TYPE_NORMAL,
-
-   /* Polling is performed on first call to
-    * retro_input_state per frame. */
-   POLL_TYPE_LATE
-};
-
-typedef struct rarch_memory_descriptor
-{
-   struct retro_memory_descriptor core;
-   size_t disconnect_mask;
-} rarch_memory_descriptor_t;
-
-typedef struct rarch_memory_map
-{
-   rarch_memory_descriptor_t *descriptors;
-   unsigned num_descriptors;
-} rarch_memory_map_t;
-
-typedef struct rarch_system_info
-{
-   struct retro_system_info info;
-
-   unsigned rotation;
-   unsigned performance_level;
-   bool load_no_content;
-
-   const char *input_desc_btn[MAX_USERS][RARCH_FIRST_META_KEY];
-   char valid_extensions[255];
-
-   struct retro_disk_control_callback  disk_control_cb;
-   struct retro_location_callback      location_cb;
-
-   struct
-   {
-      struct retro_subsystem_info *data;
-      unsigned size;
-   } subsystem;
-
-   struct
-   {
-      struct retro_controller_info *data;
-      unsigned size;
-   } ports;
-
-   rarch_memory_map_t mmaps;
-} rarch_system_info_t;
-
-typedef struct retro_ctx_input_state_info
-{
-   retro_input_state_t cb;
-} retro_ctx_input_state_info_t;
-
-typedef struct retro_ctx_cheat_info
-{
-   unsigned index;
-   bool enabled;
-   const char *code;
-} retro_ctx_cheat_info_t;
-
-typedef struct retro_ctx_api_info
-{
-   unsigned version;
-} retro_ctx_api_info_t;
-
-typedef struct retro_ctx_region_info
-{
-  unsigned region;
-} retro_ctx_region_info_t;
-
-typedef struct retro_ctx_controller_info
-{
-   unsigned port;
-   unsigned device;
-} retro_ctx_controller_info_t;
-
-typedef struct retro_ctx_memory_info
-{
-   void *data;
-   size_t size;
-   unsigned id;
-} retro_ctx_memory_info_t;
-
-typedef struct retro_ctx_load_content_info
-{
-   struct retro_game_info *info;
-   const struct string_list *content;
-   const struct retro_subsystem_info *special;
-} retro_ctx_load_content_info_t;
-
-typedef struct retro_ctx_serialize_info
-{
-   const void *data_const;
-   void *data;
-   size_t size;
-} retro_ctx_serialize_info_t;
-
-typedef struct retro_ctx_size_info
-{
-   size_t size;
-} retro_ctx_size_info_t;
-
-typedef struct retro_ctx_environ_info
-{
-   retro_environment_t env;
-} retro_ctx_environ_info_t;
-
-typedef struct retro_callbacks
-{
-   retro_video_refresh_t frame_cb;
-   retro_audio_sample_t sample_cb;
-   retro_audio_sample_batch_t sample_batch_cb;
-   retro_input_state_t state_cb;
-   retro_input_poll_t poll_cb;
-} retro_callbacks_t;
-
-bool core_load(unsigned poll_type_behavior);
-
-bool core_unload(void);
-
-bool core_set_default_callbacks(struct retro_callbacks *cbs);
-
+#ifdef HAVE_REWIND
 bool core_set_rewind_callbacks(void);
+#endif
 
 #ifdef HAVE_NETWORKING
 bool core_set_netplay_callbacks(void);
@@ -165,56 +37,26 @@ bool core_set_netplay_callbacks(void);
 bool core_unset_netplay_callbacks(void);
 #endif
 
-bool core_set_poll_type(unsigned *type);
+bool core_set_poll_type(unsigned type);
 
 /* Runs the core for one frame. */
 bool core_run(void);
 
-/* Runs the core for one frame, but does not trigger any input polling */
-bool core_run_no_input_polling(void);
-
-bool core_init(void);
-
-bool core_deinit(void *data);
-
-bool core_unload_game(void);
-
 bool core_reset(void);
-
-bool core_set_environment(retro_ctx_environ_info_t *info);
 
 bool core_serialize_size(retro_ctx_size_info_t *info);
 
 uint64_t core_serialization_quirks(void);
 
-void core_set_serialization_quirks(uint64_t quirks);
-
 bool core_serialize(retro_ctx_serialize_info_t *info);
 
 bool core_unserialize(retro_ctx_serialize_info_t *info);
-
-bool core_init_symbols(enum rarch_core_type *type);
 
 bool core_set_cheat(retro_ctx_cheat_info_t *info);
 
 bool core_reset_cheat(void);
 
-bool core_api_version(retro_ctx_api_info_t *api);
-
-/* Compare libretro core API version against API version
- * used by RetroArch.
- *
- * TODO - when libretro v2 gets added, allow for switching
- * between libretro version backend dynamically.
- */
-bool core_verify_api_version(void);
-
-bool core_get_region(retro_ctx_region_info_t *info);
-
 bool core_get_memory(retro_ctx_memory_info_t *info);
-
-/* Initialize system A/V information. */
-bool core_get_system_av_info(struct retro_system_av_info *av_info);
 
 /* Get system A/V information. */
 bool core_get_system_info(struct retro_system_info *system);
@@ -225,23 +67,13 @@ bool core_set_controller_port_device(retro_ctx_controller_info_t *pad);
 
 bool core_has_set_input_descriptor(void);
 
-void core_set_input_descriptors(void);
-
-void core_unset_input_descriptors(void);
-
-bool core_uninit_libretro_callbacks(void);
-
-void core_uninit_symbols(void);
-
-void core_set_input_state(retro_ctx_input_state_info_t *info);
-
-bool core_is_symbols_inited(void);
-
-bool core_is_inited(void);
-
-bool core_is_game_loaded(void);
-
-extern struct retro_callbacks retro_ctx;
+/**
+ * core_set_default_callbacks:
+ * @data           : pointer to retro_callbacks object
+ *
+ * Binds the libretro callbacks to default callback functions.
+ **/
+bool core_set_default_callbacks(void *data);
 
 RETRO_END_DECLS
 

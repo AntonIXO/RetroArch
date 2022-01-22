@@ -16,11 +16,15 @@
 
 #include "../include/wiiu/hid.h"
 #include <wiiu/os/atomic.h>
+#include <string/stdstring.h>
 
+/* TODO/FIXME - static globals */
 static wiiu_event_list events;
 static wiiu_adapter_list adapters;
 
-static void report_hid_error(const char *msg, wiiu_adapter_t *adapter, int32_t error);
+/* Forward declaration */
+static void report_hid_error(const char *msg,
+      wiiu_adapter_t *adapter, int32_t error);
 
 static bool wiiu_hid_joypad_query(void *data, unsigned slot)
 {
@@ -28,18 +32,20 @@ static bool wiiu_hid_joypad_query(void *data, unsigned slot)
    if (!hid)
       return false;
 
-   return slot < HID_MAX_SLOT();
+   return slot < joypad_state.max_slot;
 }
 
 static joypad_connection_t *get_pad(wiiu_hid_t *hid, unsigned slot)
 {
-   if(!wiiu_hid_joypad_query(hid, slot))
+   joypad_connection_t *result;
+   if (!wiiu_hid_joypad_query(hid, slot)) {
+      RARCH_LOG("wiiu_hid: get_pad: invalid slot: %d", slot);
       return NULL;
-
-   joypad_connection_t *result = HID_PAD_CONNECTION_PTR(slot);
-   if(!result || !result->connected || !result->iface || !result->data)
+   }
+   result = &joypad_state.pads[slot];
+   if (!result->connected || !result->iface || !result->connection) {
       return NULL;
-
+   }
    return result;
 }
 
@@ -47,28 +53,72 @@ static const char *wiiu_hid_joypad_name(void *data, unsigned slot)
 {
    joypad_connection_t *pad = get_pad((wiiu_hid_t *)data, slot);
 
-   if(!pad)
+   if (!pad || !pad->iface->get_name)
       return NULL;
 
-   return pad->iface->get_name(pad->data);
+   return pad->iface->get_name(pad->connection);
 }
 
 static void wiiu_hid_joypad_get_buttons(void *data, unsigned slot, input_bits_t *state)
 {
    joypad_connection_t *pad = get_pad((wiiu_hid_t *)data, slot);
 
-   if(pad)
-      pad->iface->get_buttons(pad->data, state);
+   if (pad && pad->iface->get_buttons)
+      pad->iface->get_buttons(pad->connection, state);
 }
 
-static bool wiiu_hid_joypad_button(void *data, unsigned slot, uint16_t joykey)
+static int16_t wiiu_hid_joypad_button(void *data,
+      unsigned slot, uint16_t joykey)
+{
+   joypad_connection_t *pad             = get_pad((wiiu_hid_t *)data, slot);
+   if (!pad || !pad->iface->button)
+      return 0;
+   return pad->iface->button(pad->connection, joykey);
+}
+
+static int16_t wiiu_hid_joypad_axis(void *data, unsigned slot, uint32_t joyaxis)
 {
    joypad_connection_t *pad = get_pad((wiiu_hid_t *)data, slot);
 
-   if(!pad)
-      return false;
+   if (!pad)
+      return 0;
 
-   return pad->iface->button(pad->data, joykey);
+   return pad->iface->get_axis(pad->connection, joyaxis);
+}
+
+static int16_t wiiu_hid_joypad_state(
+      void *data,
+      rarch_joypad_info_t *joypad_info,
+      const void *binds_data,
+      unsigned port)
+{
+   unsigned i;
+   int16_t ret                          = 0;
+   const struct retro_keybind *binds    = (const struct retro_keybind*)
+      binds_data;
+   uint16_t port_idx                    = joypad_info->joy_idx;
+   joypad_connection_t *pad             = get_pad((wiiu_hid_t *)data, port_idx);
+   if (!pad)
+      return 0;
+
+   for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)
+   {
+      /* Auto-binds are per joypad, not per user. */
+      const uint64_t joykey  = (binds[i].joykey != NO_BTN)
+         ? binds[i].joykey  : joypad_info->auto_binds[i].joykey;
+      const uint32_t joyaxis = (binds[i].joyaxis != AXIS_NONE)
+         ? binds[i].joyaxis : joypad_info->auto_binds[i].joyaxis;
+      if (
+               (uint16_t)joykey != NO_BTN 
+            && pad->iface->button && pad->iface->button(pad->connection, (uint16_t)joykey))
+         ret |= ( 1 << i);
+      else if (joyaxis != AXIS_NONE && pad->iface->get_axis &&
+            ((float)abs(pad->iface->get_axis(pad->connection, joyaxis)) 
+             / 0x8000) > joypad_info->axis_threshold)
+         ret |= (1 << i);
+   }
+
+   return ret;
 }
 
 static bool wiiu_hid_joypad_rumble(void *data, unsigned slot,
@@ -76,26 +126,16 @@ static bool wiiu_hid_joypad_rumble(void *data, unsigned slot,
 {
    joypad_connection_t *pad = get_pad((wiiu_hid_t *)data, slot);
 
-   if(!pad)
+   if (!pad || !pad->iface->set_rumble)
       return false;
 
-   pad->iface->set_rumble(pad->data, effect, strength);
+   pad->iface->set_rumble(pad->connection, effect, strength);
    return false;
-}
-
-static int16_t wiiu_hid_joypad_axis(void *data, unsigned slot, uint32_t joyaxis)
-{
-   joypad_connection_t *pad = get_pad((wiiu_hid_t *)data, slot);
-
-   if(!pad)
-      return 0;
-
-   return pad->iface->get_axis(pad->data, joyaxis);
 }
 
 static void *wiiu_hid_init(void)
 {
-   RARCH_LOG("[hid]: initializing HID subsystem\n");
+   RARCH_LOG("[hid]: initializing\n");
    wiiu_hid_t *hid = new_hid();
    HIDClient *client = new_hidclient();
 
@@ -110,7 +150,6 @@ static void *wiiu_hid_init(void)
    HIDAddClient(client, wiiu_attach_callback);
    hid->client = client;
 
-   RARCH_LOG("[hid]: init success\n");
    return hid;
 
 error:
@@ -136,7 +175,7 @@ static void wiiu_hid_free(const void *data)
    if (events.list)
    {
       wiiu_attach_event *event = NULL;
-      while( (event = events.list) != NULL)
+      while ((event = events.list) != NULL)
       {
          events.list = event->next;
          delete_attach_event(event);
@@ -148,7 +187,7 @@ static void wiiu_hid_free(const void *data)
 static void wiiu_hid_poll(void *data)
 {
    wiiu_hid_t *hid = (wiiu_hid_t *)data;
-   if(hid == NULL)
+   if (!hid)
       return;
 
    synchronized_process_adapters(hid);
@@ -159,7 +198,8 @@ static void wiiu_hid_send_control(void *data, uint8_t *buf, size_t size)
    wiiu_adapter_t *adapter = (wiiu_adapter_t *)data;
    int32_t result;
 
-   if (!adapter) {
+   if (!adapter)
+   {
       RARCH_ERR("[hid]: send_control: bad adapter.\n");
       return;
    }
@@ -172,7 +212,7 @@ static void wiiu_hid_send_control(void *data, uint8_t *buf, size_t size)
     * to write a single byte was 0xffe2ff97, which works out to -30 and -105.
     *  I have no idea what these mean. */
    result = HIDWrite(adapter->handle, adapter->tx_buffer, adapter->tx_size, NULL, NULL);
-   if(result < 0)
+   if (result < 0)
    {
       int16_t r1 =  (result & 0x0000FFFF);
       int16_t r2 = ((result & 0xFFFF0000) >> 16);
@@ -180,17 +220,45 @@ static void wiiu_hid_send_control(void *data, uint8_t *buf, size_t size)
    }
 }
 
+static void _fixup_report_buffer(uint8_t **buffer, uint8_t report_id, size_t *length) {
+   if((*buffer)[0] == report_id) {
+      *buffer = (*buffer)+ 1;
+      *length = *length - 1;
+   }
+}
+
 static int32_t wiiu_hid_set_report(void *data, uint8_t report_type,
-               uint8_t report_id, void *report_data, uint32_t report_length)
+               uint8_t report_id, uint8_t *report_data, size_t report_length)
 {
    wiiu_adapter_t *adapter = (wiiu_adapter_t *)data;
    if (!adapter || report_length > adapter->tx_size)
       return -1;
 
+   _fixup_report_buffer(&report_data, report_id, &report_length);
+
    memset(adapter->tx_buffer, 0, adapter->tx_size);
    memcpy(adapter->tx_buffer, report_data, report_length);
 
    return HIDSetReport(adapter->handle,
+         report_type,
+         report_id,
+         adapter->tx_buffer,
+         adapter->tx_size,
+         NULL, NULL);
+}
+
+static int32_t wiiu_hid_get_report(void *handle, uint8_t report_type, uint8_t report_id, uint8_t *report_data, size_t report_length)
+{
+   wiiu_adapter_t *adapter = (wiiu_adapter_t *)handle;
+   if (!adapter || report_length > adapter->tx_size)
+      return -1;
+
+   _fixup_report_buffer(&report_data, report_id, &report_length);
+
+   memset(adapter->tx_buffer, 0, adapter->tx_size);
+   memcpy(adapter->tx_buffer, report_data, report_length);
+
+   return HIDGetReport(adapter->handle,
          report_type,
          report_id,
          adapter->tx_buffer,
@@ -227,24 +295,22 @@ static int32_t wiiu_hid_read(void *data, void *buffer, size_t size)
    wiiu_adapter_t *adapter = (wiiu_adapter_t *)data;
    int32_t result;
 
-   if(!adapter)
+   if (!adapter)
       return -1;
 
-   if(size > adapter->rx_size)
+   if (size > adapter->rx_size)
       return -1;
 
    result = HIDRead(adapter->handle, buffer, size, NULL, NULL);
-   if(result < 0)
+   if (result < 0)
       report_hid_error("read failed", adapter, result);
 
    return result;
 }
 
-
 static void start_polling_thread(wiiu_hid_t *hid)
 {
    OSThreadAttributes attributes = OS_THREAD_ATTRIB_AFFINITY_CPU2;
-   BOOL result                   = false;
    int32_t stack_size            = 0x8000;
    int32_t priority              = 10;
    OSThread *thread              = new_thread();
@@ -285,7 +351,6 @@ error:
    return;
 }
 
-
 static void stop_polling_thread(wiiu_hid_t *hid)
 {
    int thread_result = 0;
@@ -295,7 +360,8 @@ static void stop_polling_thread(wiiu_hid_t *hid)
       return;
 
    /* Unregister our HID client so we don't get any new events. */
-   if(hid->client) {
+   if (hid->client)
+   {
      HIDDelClient(hid->client);
      hid->client = NULL;
    }
@@ -328,15 +394,45 @@ static void log_device(HIDDevice *device)
    RARCH_LOG("    max_packet_size_tx: %d\n", device->max_packet_size_tx);
 }
 
+static uint8_t try_init_driver_multi(wiiu_adapter_t *adapter, joypad_connection_entry_t *entry) {
+   adapter->pad_driver_data = entry->iface->init(adapter, -1, &wiiu_hid);
+   if(!adapter->pad_driver_data) {
+      return ADAPTER_STATE_DONE;
+   }
+
+   pad_connection_pad_register(joypad_state.pads, adapter->pad_driver, adapter->pad_driver_data, adapter, &hidpad_driver, SLOT_AUTO);
+   return ADAPTER_STATE_READY;
+}
 
 static uint8_t try_init_driver(wiiu_adapter_t *adapter)
 {
-   adapter->driver_handle = adapter->driver->init(adapter);
-   if(adapter->driver_handle == NULL) {
-     RARCH_ERR("[hid]: Failed to initialize driver: %s\n",
-        adapter->driver->name);
-     return ADAPTER_STATE_DONE;
+   joypad_connection_entry_t *entry;
+   int slot;
+
+   entry = find_connection_entry(adapter->vendor_id, adapter->product_id, adapter->device_name);
+   if(!entry) {
+      RARCH_LOG("Failed to find entry for vid: 0x%x, pid: 0x%x, name: %s\n", adapter->vendor_id, adapter->product_id, adapter->device_name);
+      return ADAPTER_STATE_DONE;
    }
+
+   adapter->pad_driver = entry->iface;
+   
+   if(entry->iface->multi_pad) {
+      return try_init_driver_multi(adapter, entry);
+   }
+   slot = pad_connection_find_vacant_pad(joypad_state.pads);
+   if(slot < 0) {
+      RARCH_LOG("try_init_driver: no slot available\n");
+      return ADAPTER_STATE_DONE;
+   }
+
+   adapter->pad_driver_data = entry->iface->init(adapter, slot, &wiiu_hid);
+   if(!adapter->pad_driver_data) {
+      RARCH_LOG("try_init_driver: pad init failed\n");
+      return ADAPTER_STATE_DONE;
+   }
+
+   pad_connection_pad_register(joypad_state.pads, adapter->pad_driver, adapter->pad_driver_data, adapter, &hidpad_driver, slot);
 
    return ADAPTER_STATE_READY;
 }
@@ -348,37 +444,48 @@ static void synchronized_process_adapters(wiiu_hid_t *hid)
    bool keep_prev = false;
 
    OSFastMutex_Lock(&(adapters.lock));
-   for(adapter = adapters.list; adapter != NULL; adapter = adapter_next)
+
+   for (adapter = adapters.list; adapter != NULL; adapter = adapter_next)
    {
-     adapter_next = adapter->next;
+      adapter_next = adapter->next;
 
-     switch(adapter->state)
-     {
-       case ADAPTER_STATE_NEW:
-          adapter->state = try_init_driver(adapter);
-          break;
-       case ADAPTER_STATE_READY:
-       case ADAPTER_STATE_READING:
-       case ADAPTER_STATE_DONE:
-          break;
-       case ADAPTER_STATE_GC:
-          /* remove from the list */
-          if(prev == NULL)
-             adapters.list = adapter->next;
-          else
-             prev->next = adapter->next;
+      switch(adapter->state)
+      {
+         case ADAPTER_STATE_NEW:
+            adapter->state = try_init_driver(adapter);
+            break;
+         case ADAPTER_STATE_READY:
+         case ADAPTER_STATE_READING:
+            if(adapter->pad_driver && adapter->pad_driver->multi_pad) {
+               pad_connection_pad_refresh(joypad_state.pads, adapter->pad_driver, adapter->pad_driver_data, adapter, &hidpad_driver);
+            }
+         case ADAPTER_STATE_DONE:
+            break;
+         case ADAPTER_STATE_GC:
+            {
+               /* remove from the list */
+               if (!prev)
+                  adapters.list = adapter->next;
+               else
+                  prev->next = adapter->next;
 
-          /* adapter is no longer valid after this point */
-          delete_adapter(adapter);
-          /* signal not to update prev ptr since adapter is now invalid */
-          keep_prev = true;
-          break;
-       default:
-          RARCH_ERR("[hid]: Invalid adapter state: %d\n", adapter->state);
-          break;
-     }
-     prev = keep_prev ? prev : adapter;
-     keep_prev = false;
+               if(adapter->pad_driver && adapter->pad_driver_data)
+               {
+                  pad_connection_pad_deregister(joypad_state.pads, adapter->pad_driver, adapter->pad_driver_data);
+               }
+               /* adapter is no longer valid after this point */
+               delete_adapter(adapter);
+               /* signal not to update prev ptr since adapter is now invalid */
+               keep_prev = true;
+            }
+            break;
+
+         default:
+            RARCH_ERR("[hid]: Invalid adapter state: %d\n", adapter->state);
+            break;
+      }
+      prev = keep_prev ? prev : adapter;
+      keep_prev = false;
    }
    OSFastMutex_Unlock(&(adapters.lock));
 }
@@ -403,9 +510,9 @@ static wiiu_adapter_t *synchronized_lookup_adapter(uint32_t handle)
    OSFastMutex_Lock(&(adapters.lock));
    wiiu_adapter_t *iterator;
 
-   for(iterator = adapters.list; iterator != NULL; iterator = iterator->next)
+   for (iterator = adapters.list; iterator != NULL; iterator = iterator->next)
    {
-      if(iterator->handle == handle)
+      if (iterator->handle == handle)
          break;
    }
    OSFastMutex_Unlock(&(adapters.lock));
@@ -426,17 +533,15 @@ static int32_t wiiu_attach_callback(HIDClient *client,
 {
    wiiu_attach_event *event = NULL;
 
-   if(attach) {
-      RARCH_LOG("[hid]: Device attach event generated.\n");
+   if (attach)
+   {
       log_device(device);
-   } else {
-      RARCH_LOG("[hid]: Device detach event generated.\n");
    }
 
    if (device)
       event = new_attach_event(device);
 
-   if(!event)
+   if (!event)
       goto error;
 
    event->type = attach;
@@ -456,24 +561,24 @@ static void wiiu_hid_detach(wiiu_hid_t *hid, wiiu_attach_event *event)
    /* this will signal the read loop to stop for this adapter
     * the read loop method will update this to ADAPTER_STATE_GC
     * so the adapter poll method can clean it up. */
-   if(adapter)
+   if (adapter)
       adapter->connected = false;
 }
-
 
 static void wiiu_hid_attach(wiiu_hid_t *hid, wiiu_attach_event *event)
 {
    wiiu_adapter_t *adapter = new_adapter(event);
 
-   if(!adapter)
+   if (!adapter)
    {
       RARCH_ERR("[hid]: Failed to allocate adapter.\n");
       goto error;
    }
 
-   adapter->hid    = hid;
-   adapter->driver = event->driver;
-   adapter->state  = ADAPTER_STATE_NEW;
+   adapter->hid        = hid;
+   adapter->vendor_id  = event->vendor_id;
+   adapter->product_id = event->product_id;
+   adapter->state      = ADAPTER_STATE_NEW;
 
    synchronized_add_to_adapters_list(adapter);
 
@@ -487,35 +592,34 @@ static void wiiu_hid_read_loop_callback(uint32_t handle, int32_t error,
               uint8_t *buffer, uint32_t buffer_size, void *userdata)
 {
    wiiu_adapter_t *adapter = (wiiu_adapter_t *)userdata;
-   if(!adapter)
+   if (!adapter)
    {
       RARCH_ERR("read_loop_callback: bad userdata\n");
       return;
    }
 
-   if(error < 0)
-   {
+   if (error < 0)
       report_hid_error("async read failed", adapter, error);
-   }
 
-   if(adapter->state == ADAPTER_STATE_READING) {
+   if (adapter->state == ADAPTER_STATE_READING)
+   {
       adapter->state = ADAPTER_STATE_READY;
 
-      if(error == 0) {
-         adapter->driver->handle_packet(adapter->driver_handle,
-            buffer, buffer_size);
+      if (error == 0)
+      {
+         adapter->pad_driver->packet_handler(adapter->pad_driver_data, buffer, buffer_size);
       }
    }
 }
 
 static void report_hid_error(const char *msg, wiiu_adapter_t *adapter, int32_t error)
 {
-   if(error >= 0)
+   if (error >= 0)
       return;
 
    int16_t hid_error_code = error & 0xffff;
    int16_t error_category = (error >> 16) & 0xffff;
-   const char *device = (adapter && adapter->driver) ? adapter->driver->name : "unknown";
+   const char *device = string_is_empty(adapter->device_name) ? "unknown" : adapter->device_name;
 
    switch(hid_error_code)
    {
@@ -552,10 +656,13 @@ static void report_hid_error(const char *msg, wiiu_adapter_t *adapter, int32_t e
       case -111:
          RARCH_ERR("[hid]: invalid device handle (%s)\n", device);
          break;
-#if 0
       default:
+#if 0
          RARCH_ERR("[hid]: Unknown error (%d:%d: %s)\n",
             error_category, hid_error_code, device);
+#else
+         (void)error_category;
+         break;
 #endif
    }
 }
@@ -577,46 +684,47 @@ static void wiiu_hid_polling_thread_cleanup(OSThread *thread, void *stack)
    do
    {
       incomplete = 0;
-      for(adapter = adapters.list; adapter != NULL; adapter = adapter->next)
+      for (adapter = adapters.list; adapter != NULL; adapter = adapter->next)
       {
-         if(adapter->state == ADAPTER_STATE_READING)
+         if (adapter->state == ADAPTER_STATE_READING)
             incomplete++;
       }
 
-      if(incomplete == 0)
+      if (incomplete == 0)
       {
          RARCH_LOG("All in-flight reads complete.\n");
-         while(adapters.list != NULL)
+         while (adapters.list)
          {
             RARCH_LOG("[hid]: shutting down adapter..\n");
             adapter = adapters.list;
             adapters.list = adapter->next;
+            pad_connection_pad_deregister(joypad_state.pads, adapter->pad_driver, adapter->pad_driver_data);
             delete_adapter(adapter);
          }
       }
 
-      if(incomplete)
+      if (incomplete)
          usleep(5000);
 
-      if(++retries >= 1000)
+      if (++retries >= 1000)
       {
          RARCH_WARN("[hid]: timed out waiting for in-flight read to finish.\n");
          incomplete = 0;
       }
-   } while(incomplete);
+   } while (incomplete);
 }
 
 static void wiiu_handle_attach_events(wiiu_hid_t *hid, wiiu_attach_event *list)
 {
    wiiu_attach_event *event, *event_next = NULL;
 
-   if(!hid || !list)
+   if (!hid || !list)
       return;
 
-   for(event = list; event != NULL; event = event_next)
+   for (event = list; event != NULL; event = event_next)
    {
       event_next  = event->next;
-      if(event->type == HID_DEVICE_ATTACH)
+      if (event->type == HID_DEVICE_ATTACH)
          wiiu_hid_attach(hid, event);
       else
          wiiu_hid_detach(hid, event);
@@ -626,7 +734,8 @@ static void wiiu_handle_attach_events(wiiu_hid_t *hid, wiiu_attach_event *list)
 
 static void wiiu_poll_adapter(wiiu_adapter_t *adapter)
 {
-   if(!adapter->connected) {
+   if (!adapter->connected)
+   {
       adapter->state = ADAPTER_STATE_DONE;
       return;
    }
@@ -641,13 +750,15 @@ static void wiiu_poll_adapters(wiiu_hid_t *hid)
    wiiu_adapter_t *it;
    OSFastMutex_Lock(&(adapters.lock));
 
-   for(it = adapters.list; it != NULL; it = it->next)
+   for (it = adapters.list; it != NULL; it = it->next)
    {
-      if(it->state == ADAPTER_STATE_READY)
+      if (it->state == ADAPTER_STATE_READY)
          wiiu_poll_adapter(it);
 
-      if(it->state == ADAPTER_STATE_DONE)
+      if (it->state == ADAPTER_STATE_DONE) {
+         
          it->state = ADAPTER_STATE_GC;
+      }
    }
 
    OSFastMutex_Unlock(&(adapters.lock));
@@ -659,7 +770,7 @@ static int wiiu_hid_polling_thread(int argc, const char **argv)
 
    RARCH_LOG("[hid]: polling thread is starting\n");
 
-   while(!hid->polling_thread_quit)
+   while (!hid->polling_thread_quit)
    {
       wiiu_handle_attach_events(hid, synchronized_get_events_list());
       wiiu_poll_adapters(hid);
@@ -683,37 +794,31 @@ static OSThread *new_thread(void)
 
 static void wiiu_hid_init_lists(void)
 {
-   RARCH_LOG("[hid]: Initializing events list\n");
    memset(&events, 0, sizeof(events));
    OSFastMutex_Init(&(events.lock), "attach_events");
-   RARCH_LOG("[hid]: Initializing adapters list\n");
    memset(&adapters, 0, sizeof(adapters));
    OSFastMutex_Init(&(adapters.lock), "adapters");
 }
 
 static wiiu_hid_t *new_hid(void)
 {
-   RARCH_LOG("[hid]: new_hid()\n");
    return alloc_zeroed(4, sizeof(wiiu_hid_t));
 }
 
 static void delete_hid(wiiu_hid_t *hid)
 {
-   RARCH_LOG("[hid]: delete_hid()\n");
-   if(hid)
+   if (hid)
       free(hid);
 }
 
 static HIDClient *new_hidclient(void)
 {
-   RARCH_LOG("[hid]: new_hidclient()\n");
    return alloc_zeroed(32, sizeof(HIDClient));
 }
 
 static void delete_hidclient(HIDClient *client)
 {
-   RARCH_LOG("[hid]: delete_hidclient()\n");
-   if(client)
+   if (client)
       free(client);
 }
 
@@ -733,8 +838,11 @@ static wiiu_adapter_t *new_adapter(wiiu_attach_event *event)
 
    adapter->handle          = event->handle;
    adapter->interface_index = event->interface_index;
+   adapter->product_id      = event->product_id;
+   adapter->vendor_id       = event->vendor_id;
    init_cachealigned_buffer(event->max_packet_size_rx, &adapter->rx_buffer, &adapter->rx_size);
    init_cachealigned_buffer(event->max_packet_size_tx, &adapter->tx_buffer, &adapter->tx_size);
+   memcpy(adapter->device_name, event->device_name, sizeof(adapter->device_name));
    adapter->connected       = true;
 
    return adapter;
@@ -745,39 +853,55 @@ static void delete_adapter(wiiu_adapter_t *adapter)
    if (!adapter)
       return;
 
-   if(adapter->rx_buffer)
+   if (adapter->rx_buffer)
    {
       free(adapter->rx_buffer);
       adapter->rx_buffer = NULL;
    }
-   if(adapter->tx_buffer)
+   if (adapter->tx_buffer)
    {
       free(adapter->tx_buffer);
       adapter->tx_buffer = NULL;
    }
-   if(adapter->driver && adapter->driver_handle) {
-      adapter->driver->free(adapter->driver_handle);
-      adapter->driver_handle = NULL;
-      adapter->driver = NULL;
+   if(adapter->pad_driver && adapter->pad_driver_data) {
+      adapter->pad_driver->deinit(adapter->pad_driver_data);
+      adapter->pad_driver_data = NULL;
    }
 
    free(adapter);
 }
 
+static void get_device_name(HIDDevice *device, wiiu_attach_event *event)
+{
+   int32_t result;
+   uint8_t *name_buffer = alloc_zeroed(4, device->max_packet_size_rx);
+   uint8_t *top = &event->device_name[0];
+
+   if(name_buffer == NULL) {
+      return;
+   }
+   result = HIDGetDescriptor(device->handle, 3, 2, 0, name_buffer, device->max_packet_size_rx, NULL, NULL);
+   if(result > 0) {
+      for(int i = 2; i < result; i += 2) {
+         top[0] = name_buffer[i];
+         top++;
+      }
+   }
+   free(name_buffer);
+}
+
 static wiiu_attach_event *new_attach_event(HIDDevice *device)
 {
-   hid_device_t *driver = hid_device_driver_lookup(device->vid, device->pid);
-   if(!driver)
+   if(device->protocol > 0)
    {
-      RARCH_ERR("[hid]: Failed to locate driver for device vid=%04x pid=%04x\n",
-        device->vid, device->pid);
+      /* ignore mice and keyboards as HID devices */
       return NULL;
    }
    wiiu_attach_event *event = alloc_zeroed(4, sizeof(wiiu_attach_event));
-   if(!event)
+   
+   if (!event)
       return NULL;
 
-   event->driver             = driver;
    event->handle             = device->handle;
    event->vendor_id          = device->vid;
    event->product_id         = device->pid;
@@ -788,32 +912,32 @@ static wiiu_attach_event *new_attach_event(HIDDevice *device)
          && device->protocol == 2);
    event->max_packet_size_rx = device->max_packet_size_rx;
    event->max_packet_size_tx = device->max_packet_size_tx;
+   get_device_name(device, event);
 
    return event;
 }
 
 static void delete_attach_event(wiiu_attach_event *event)
 {
-   if(event)
+   if (event)
       free(event);
 }
-
 
 void *alloc_zeroed(size_t alignment, size_t size)
 {
    void *result = memalign(alignment, size);
-   if(result)
+   if (result)
       memset(result, 0, size);
 
    return result;
 }
-
 
 hid_driver_t wiiu_hid = {
    wiiu_hid_init,
    wiiu_hid_joypad_query,
    wiiu_hid_free,
    wiiu_hid_joypad_button,
+   wiiu_hid_joypad_state,
    wiiu_hid_joypad_get_buttons,
    wiiu_hid_joypad_axis,
    wiiu_hid_poll,
@@ -822,8 +946,8 @@ hid_driver_t wiiu_hid = {
    "wiiu",
    wiiu_hid_send_control,
    wiiu_hid_set_report,
+   wiiu_hid_get_report,
    wiiu_hid_set_idle,
    wiiu_hid_set_protocol,
    wiiu_hid_read,
 };
-

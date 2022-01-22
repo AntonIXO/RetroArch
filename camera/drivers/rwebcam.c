@@ -17,8 +17,10 @@
 #include <stdint.h>
 
 #include <boolean.h>
+#include <libretro.h>
 
 #include "../camera_driver.h"
+#include "../../retroarch.h"
 
 /* forward declarations */
 void *RWebCamInit(uint64_t caps, unsigned width, unsigned height);

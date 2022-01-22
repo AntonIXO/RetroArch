@@ -21,13 +21,27 @@ extern "C" {
 /* #define MSG_DONTWAIT    0x0004 */
 
 #define SO_REUSEADDR    0x0004
+#define SO_WINSCALE     0x0400
+#define SO_TCPSACK      0x0200
+#define SO_SNDBUF       0x1001
+#define SO_RCVBUF       0x1002
 #define SO_NBIO         0x1014
 #define SO_NONBLOCK     0x1016
 
-
 /* return codes */
 #define SO_SUCCESS      0
+
+
 #define SO_EWOULDBLOCK  6
+#define SO_EINVAL      11
+
+#ifdef EWOULDBLOCK
+#undef EWOULDBLOCK
+#endif
+
+#ifdef EAGAIN
+#undef EAGAIN
+#endif
 
 #define EWOULDBLOCK SO_EWOULDBLOCK
 #define EAGAIN SO_EWOULDBLOCK
@@ -42,11 +56,10 @@ struct sockaddr
    char        sa_data[];
 };
 
-struct sockaddr_storage
-{
-   sa_family_t ss_family;
-   char        __ss_padding[26];
-};
+/* Wii U only supports IPv4 so we make sockaddr_storage
+   be sockaddr_in for compatibility.
+ */
+#define sockaddr_storage sockaddr_in
 
 struct linger
 {
@@ -71,6 +84,7 @@ int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t
 int shutdown(int sockfd, int how);
 int socket(int domain, int type, int protocol);
 int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
+int somemopt (int req_type, char* mem, unsigned int memlen, int flags);
 
 int socketlasterr(void);
 

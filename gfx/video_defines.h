@@ -21,6 +21,12 @@
 
 RETRO_BEGIN_DECLS
 
+enum
+{
+   TEXTURES = 8,
+   TEXTURESMASK = TEXTURES - 1
+};
+
 enum texture_filter_type
 {
    TEXTURE_FILTER_LINEAR = 0,
@@ -55,6 +61,7 @@ enum aspect_ratio
    ASPECT_RATIO_SQUARE,
    ASPECT_RATIO_CORE,
    ASPECT_RATIO_CUSTOM,
+   ASPECT_RATIO_FULL,
 
    ASPECT_RATIO_END
 };
@@ -76,6 +83,7 @@ enum rarch_display_type
    RARCH_DISPLAY_X11,
    /* video_display => N/A, video_window => HWND */
    RARCH_DISPLAY_WIN32,
+   RARCH_DISPLAY_WAYLAND,
    RARCH_DISPLAY_OSX
 };
 
@@ -83,11 +91,14 @@ enum font_driver_render_api
 {
    FONT_DRIVER_RENDER_DONT_CARE,
    FONT_DRIVER_RENDER_OPENGL_API,
+   FONT_DRIVER_RENDER_OPENGL_CORE_API,
+   FONT_DRIVER_RENDER_OPENGL1_API,
    FONT_DRIVER_RENDER_D3D8_API,
    FONT_DRIVER_RENDER_D3D9_API,
    FONT_DRIVER_RENDER_D3D10_API,
    FONT_DRIVER_RENDER_D3D11_API,
    FONT_DRIVER_RENDER_D3D12_API,
+   FONT_DRIVER_RENDER_PS2,
    FONT_DRIVER_RENDER_VITA2D,
    FONT_DRIVER_RENDER_CTR,
    FONT_DRIVER_RENDER_WIIU,
@@ -95,8 +106,10 @@ enum font_driver_render_api
    FONT_DRIVER_RENDER_METAL_API,
    FONT_DRIVER_RENDER_CACA,
    FONT_DRIVER_RENDER_SIXEL,
+   FONT_DRIVER_RENDER_NETWORK_VIDEO,
    FONT_DRIVER_RENDER_GDI,
-   FONT_DRIVER_RENDER_VGA
+   FONT_DRIVER_RENDER_VGA,
+   FONT_DRIVER_RENDER_SWITCH
 };
 
 enum text_alignment
@@ -110,7 +123,7 @@ enum text_alignment
 #define COLOR_ABGR(r, g, b, a) (((unsigned)(a) << 24) | ((b) << 16) | ((g) << 8) | ((r) << 0))
 #endif
 
-#define LAST_ASPECT_RATIO ASPECT_RATIO_CUSTOM
+#define LAST_ASPECT_RATIO ASPECT_RATIO_FULL
 
 /* ABGR color format defines */
 
@@ -132,6 +145,90 @@ enum text_alignment
 #define FONT_COLOR_GET_BLUE(col)  (((col) >>  8) & 0xff)
 #define FONT_COLOR_GET_ALPHA(col) (((col) >>  0) & 0xff)
 #define FONT_COLOR_ARGB_TO_RGBA(col) ( (((col) >> 24) & 0xff) | (((unsigned)(col) << 8) & 0xffffff00) )
+
+typedef struct video_viewport
+{
+   int x;
+   int y;
+   unsigned width;
+   unsigned height;
+   unsigned full_width;
+   unsigned full_height;
+} video_viewport_t;
+
+typedef struct gfx_ctx_flags
+{
+   uint32_t flags;
+} gfx_ctx_flags_t;
+
+struct Size2D
+{
+   unsigned width, height;
+};
+
+enum gfx_ctx_api
+{
+   GFX_CTX_NONE = 0,
+   GFX_CTX_OPENGL_API,
+   GFX_CTX_OPENGL_ES_API,
+   GFX_CTX_DIRECT3D8_API,
+   GFX_CTX_DIRECT3D9_API,
+   GFX_CTX_DIRECT3D10_API,
+   GFX_CTX_DIRECT3D11_API,
+   GFX_CTX_DIRECT3D12_API,
+   GFX_CTX_OPENVG_API,
+   GFX_CTX_VULKAN_API,
+   GFX_CTX_METAL_API,
+   GFX_CTX_RSX_API
+};
+
+enum display_metric_types
+{
+   DISPLAY_METRIC_NONE = 0,
+   DISPLAY_METRIC_MM_WIDTH,
+   DISPLAY_METRIC_MM_HEIGHT,
+   DISPLAY_METRIC_DPI,
+   DISPLAY_METRIC_PIXEL_WIDTH,
+   DISPLAY_METRIC_PIXEL_HEIGHT
+};
+
+enum display_flags
+{
+   GFX_CTX_FLAGS_NONE            = 0,
+   GFX_CTX_FLAGS_GL_CORE_CONTEXT,
+   GFX_CTX_FLAGS_MULTISAMPLING,
+   GFX_CTX_FLAGS_CUSTOMIZABLE_SWAPCHAIN_IMAGES,
+   GFX_CTX_FLAGS_HARD_SYNC,
+   GFX_CTX_FLAGS_BLACK_FRAME_INSERTION,
+   GFX_CTX_FLAGS_MENU_FRAME_FILTERING,
+   GFX_CTX_FLAGS_ADAPTIVE_VSYNC,
+   GFX_CTX_FLAGS_SHADERS_GLSL,
+   GFX_CTX_FLAGS_SHADERS_CG,
+   GFX_CTX_FLAGS_SHADERS_HLSL,
+   GFX_CTX_FLAGS_SHADERS_SLANG,
+   GFX_CTX_FLAGS_SCREENSHOTS_SUPPORTED,
+   GFX_CTX_FLAGS_OVERLAY_BEHIND_MENU_SUPPORTED
+};
+
+enum shader_uniform_type
+{
+   UNIFORM_1F = 0,
+   UNIFORM_2F,
+   UNIFORM_3F,
+   UNIFORM_4F,
+   UNIFORM_1FV,
+   UNIFORM_2FV,
+   UNIFORM_3FV,
+   UNIFORM_4FV,
+   UNIFORM_1I
+};
+
+enum shader_program_type
+{
+   SHADER_PROGRAM_VERTEX = 0,
+   SHADER_PROGRAM_FRAGMENT,
+   SHADER_PROGRAM_COMBINED
+};
 
 RETRO_END_DECLS
 
