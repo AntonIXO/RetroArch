@@ -212,6 +212,7 @@ ACHIEVEMENTS
 #include "../deps/rcheevos/src/rcheevos/runtime_progress.c"
 #include "../deps/rcheevos/src/rcheevos/trigger.c"
 #include "../deps/rcheevos/src/rcheevos/value.c"
+#include "../deps/rcheevos/src/rhash/cdreader.c"
 #include "../deps/rcheevos/src/rhash/hash.c"
 
 #endif
@@ -582,7 +583,12 @@ FONTS
 ============================================================ */
 
 #include "../gfx/drivers_font_renderer/bitmapfont.c"
+
+#ifdef HAVE_LANGEXTRA
 #include "../gfx/drivers_font_renderer/bitmapfont_10x10.c"
+#include "../gfx/drivers_font_renderer/bitmapfont_6x10.c"
+#endif
+
 #include "../gfx/font_driver.c"
 
 #if defined(HAVE_D3D9) && defined(HAVE_D3DX)
@@ -1042,6 +1048,7 @@ FILTERS
 #include "../gfx/video_filters/upscale_1_5x.c"
 #include "../gfx/video_filters/upscale_256x_320x240.c"
 #include "../gfx/video_filters/picoscale_256x_320x240.c"
+#include "../gfx/video_filters/upscale_240x160_320x240.c"
 #endif
 
 #ifdef HAVE_DSP_FILTER
@@ -1254,6 +1261,7 @@ RETROARCH
 #include "../intl/msg_hash_id.c"
 #include "../intl/msg_hash_sv.c"
 #include "../intl/msg_hash_uk.c"
+#include "../intl/msg_hash_cs.c"
 #endif
 
 #include "../intl/msg_hash_us.c"
@@ -1414,6 +1422,7 @@ MENU
 #include "../menu/cbs/menu_cbs_label.c"
 #include "../menu/cbs/menu_cbs_sublabel.c"
 #include "../menu/menu_displaylist.c"
+#include "../menu/menu_contentless_cores.c"
 #ifdef HAVE_LIBRETRODB
 #include "../menu/menu_explore.c"
 #include "../tasks/task_menu_explore.c"
@@ -1660,10 +1669,6 @@ SSL
 #include "../libretro-common/net/net_socket_ssl_mbed.c"
 #endif
 #endif
-#endif
-
-#ifdef HAVE_GONG
-#include "../cores/libretro-gong/gong.c"
 #endif
 
 /*============================================================
